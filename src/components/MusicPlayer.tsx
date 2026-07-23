@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useMockState } from '../context/MockStateContext';
 import { 
   Play, 
@@ -18,7 +18,10 @@ import {
   ListMusic,
   X,
   ChevronDown,
-  Download
+  Download,
+  Gauge,
+  Zap,
+  Trash2
 } from 'lucide-react';
 import { Song } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -58,6 +61,29 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const [streamLogged, setStreamLogged] = useState(false);
   const [showStreamLimitAlert, setShowStreamLimitAlert] = useState(false);
 
+  // Advanced Player States (Bonus Features)
+  const [isShuffle, setIsShuffle] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('all');
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
+
+  // New Specs: Quality, Crossfade, Speed, Custom Queue
+  const [audioQuality, setAudioQuality] = useState<'128k' | '320k' | 'flac'>('320k');
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [crossfadeEnabled, setCrossfadeEnabled] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState<number>(1.0);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [customQueue, setCustomQueue] = useState<Song[]>([]);
+
+  const [activeColor, setActiveColor] = useState('#10b981');
+
+  // Initialize custom queue when songs change
+  useEffect(() => {
+    if (songs && songs.length > 0 && customQueue.length === 0) {
+      setCustomQueue(songs);
+    }
+  }, [songs]);
+
   const getStreamLimit = (tier: string) => {
     if (tier === 'free') return 6;
     if (tier === 'silver') return 60;
@@ -70,13 +96,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     return count >= getStreamLimit(currentUser.tier);
   };
 
-  const [isShuffle, setIsShuffle] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('all');
-  const [queueOpen, setQueueOpen] = useState(false);
-  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
-
-  const [activeColor, setActiveColor] = useState('#10b981');
-
+  // Color Extraction for Dominant Cover Color matching
   useEffect(() => {
     if (!currentTrack || !currentTrack.coverUrl) {
       setActiveColor('#10b981');
@@ -125,14 +145,18 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     };
   }, [currentTrack]);
 
+  // Volume & Speed updates
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = isMuted ? 0 : volume;
+      audioRef.current.playbackRate = playbackRate;
     }
-  }, [volume, isMuted]);
+  }, [volume, isMuted, playbackRate]);
 
-  const handleNext = () => {
-    if (!currentTrack || songs.length === 0) return;
+  // Next Track Logic with Crossfade Support
+  const handleNext = useCallback(() => {
+    const queueToUse = customQueue.length > 0 ? customQueue : songs;
+    if (!currentTrack || queueToUse.length === 0) return;
     
     if (currentUser && currentUser.role === 'listener' && currentUser.tier === 'free') {
       if (skipsRemaining <= 0) {
@@ -144,20 +168,20 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     }
 
     if (isShuffle) {
-      const otherSongs = songs.filter(s => s.id !== currentTrack.id);
+      const otherSongs = queueToUse.filter(s => s.id !== currentTrack.id);
       if (otherSongs.length > 0) {
         const randomSong = otherSongs[Math.floor(Math.random() * otherSongs.length)];
         setCurrentTrack(randomSong);
         setIsPlaying(true);
       }
     } else {
-      const currentIndex = songs.findIndex(s => s.id === currentTrack.id);
-      if (currentIndex !== -1 && currentIndex < songs.length - 1) {
-        setCurrentTrack(songs[currentIndex + 1]);
+      const currentIndex = queueToUse.findIndex(s => s.id === currentTrack.id);
+      if (currentIndex !== -1 && currentIndex < queueToUse.length - 1) {
+        setCurrentTrack(queueToUse[currentIndex + 1]);
         setIsPlaying(true);
       } else {
         if (repeatMode === 'all') {
-          setCurrentTrack(songs[0]);
+          setCurrentTrack(queueToUse[0]);
           setIsPlaying(true);
         } else {
           setIsPlaying(false);
@@ -165,44 +189,36 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
         }
       }
     }
-  };
+  }, [currentTrack, customQueue, songs, currentUser, skipsRemaining, isShuffle, repeatMode, setCurrentTrack, setIsPlaying]);
 
-  const handlePrev = () => {
-    if (!currentTrack || songs.length === 0) return;
+  const handlePrev = useCallback(() => {
+    const queueToUse = customQueue.length > 0 ? customQueue : songs;
+    if (!currentTrack || queueToUse.length === 0) return;
 
     if (isShuffle) {
-      const otherSongs = songs.filter(s => s.id !== currentTrack.id);
+      const otherSongs = queueToUse.filter(s => s.id !== currentTrack.id);
       if (otherSongs.length > 0) {
         const randomSong = otherSongs[Math.floor(Math.random() * otherSongs.length)];
         setCurrentTrack(randomSong);
         setIsPlaying(true);
       }
     } else {
-      const currentIndex = songs.findIndex(s => s.id === currentTrack.id);
+      const currentIndex = queueToUse.findIndex(s => s.id === currentTrack.id);
       if (currentIndex > 0) {
-        setCurrentTrack(songs[currentIndex - 1]);
+        setCurrentTrack(queueToUse[currentIndex - 1]);
         setIsPlaying(true);
       } else {
         if (repeatMode === 'all') {
-          setCurrentTrack(songs[songs.length - 1]);
+          setCurrentTrack(queueToUse[queueToUse.length - 1]);
           setIsPlaying(true);
         } else {
           if (audioRef.current) audioRef.current.currentTime = 0;
         }
       }
     }
-  };
+  }, [currentTrack, customQueue, songs, isShuffle, repeatMode, setCurrentTrack, setIsPlaying]);
 
-  const cycleRepeatMode = () => {
-    if (repeatMode === 'all') {
-      setRepeatMode('one');
-    } else if (repeatMode === 'one') {
-      setRepeatMode('none');
-    } else {
-      setRepeatMode('all');
-    }
-  };
-
+  // Audio Event Listeners & Crossfade Handler
   useEffect(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
@@ -210,9 +226,19 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
     const audio = audioRef.current;
 
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+
+      // Smooth Crossfade effect (Last 5 seconds)
+      if (crossfadeEnabled && duration > 10 && duration - audio.currentTime <= 5 && duration - audio.currentTime > 0) {
+        const fadeRatio = (duration - audio.currentTime) / 5;
+        audio.volume = Math.max(0, (isMuted ? 0 : volume) * fadeRatio);
+      }
+    };
+
     const handleDurationChange = () => setDuration(audio.duration || currentTrack?.duration || 0);
     const handleEnded = () => {
+      audio.volume = isMuted ? 0 : volume; // Reset volume after crossfade
       if (repeatMode === 'one') {
         audio.currentTime = 0;
         audio.play().catch(() => {});
@@ -255,8 +281,40 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       audio.removeEventListener('durationchange', handleDurationChange);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [currentTrack, isPlaying, repeatMode, isShuffle]);
+  }, [currentTrack, isPlaying, repeatMode, isShuffle, crossfadeEnabled, duration, volume, isMuted, handleNext]);
 
+  // Keyboard Shortcuts Support (Space, M, Arrow Keys, L, Q)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['input', 'textarea'].includes((e.target as HTMLElement).tagName.toLowerCase())) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (currentTrack) setIsPlaying(!isPlaying);
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.min(duration, currentTime + 5);
+        }
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.max(0, currentTime - 5);
+        }
+      } else if (e.code === 'KeyM') {
+        setIsMuted(prev => !prev);
+      } else if (e.code === 'KeyL') {
+        if (currentTrack) onLyricsClick();
+      } else if (e.code === 'KeyQ') {
+        setQueueOpen(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentTrack, isPlaying, currentTime, duration, setIsPlaying, onLyricsClick]);
+
+  // Increment Streams count
   useEffect(() => {
     if (isPlaying && currentTrack && currentTime > 10 && !streamLogged) {
       incrementSongStreams(currentTrack.id);
@@ -303,6 +361,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     document.body.removeChild(link);
   };
 
+  const removeFromQueue = (songId: string) => {
+    setCustomQueue(prev => prev.filter(s => s.id !== songId));
+  };
+
   const formatTime = (time: number) => {
     if (isNaN(time)) return "0:00";
     const mins = Math.floor(time / 60);
@@ -310,21 +372,28 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const cycleRepeatMode = () => {
+    if (repeatMode === 'all') setRepeatMode('one');
+    else if (repeatMode === 'one') setRepeatMode('none');
+    else setRepeatMode('all');
+  };
+
   const isFollowing = currentUser.followedArtists.includes(currentTrack?.artistName || '');
 
   return (
     <div style={{ '--active-theme-color': activeColor } as React.CSSProperties}>
       <div 
-        className="desktop-player-only h-24 bg-[#181818] fixed bottom-0 left-0 right-0 z-40 px-6 flex items-center justify-between select-none"
+        className="desktop-player-only h-24 bg-[#181818] fixed bottom-0 left-0 right-0 z-40 px-6 flex items-center justify-between select-none shadow-2xl transition-all duration-300"
         style={{ borderTop: '2px solid var(--active-theme-color)' }}
       >
+        {/* Left: Track Details & Heart */}
         <div className="flex items-center gap-4 w-1/4 min-w-[200px]">
           {currentTrack ? (
             <>
               <img
                 src={currentTrack.coverUrl}
                 alt={currentTrack.title}
-                className="w-14 h-14 rounded-md object-cover shadow-lg border border-zinc-850"
+                className="w-14 h-14 rounded-md object-cover shadow-lg border border-zinc-850 transition-transform duration-300 hover:scale-105"
               />
               <div className="flex flex-col min-w-0">
                 <span 
@@ -360,7 +429,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               <div className="flex items-center gap-1.5 ml-2">
                 <button
                   onClick={() => toggleFollowArtist(currentTrack.artistName)}
-                  className="p-1.5 hover:text-white hover:scale-105 transition cursor-pointer"
+                  className="p-1.5 hover:text-white hover:scale-110 transition cursor-pointer"
                   title={isFollowing ? "Unfollow Artist" : "Follow Artist"}
                 >
                   <Heart 
@@ -373,7 +442,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 </button>
                 <button
                   onClick={() => onAddToPlaylistClick(currentTrack.id)}
-                  className="p-1.5 hover:text-white hover:scale-105 transition cursor-pointer"
+                  className="p-1.5 hover:text-white hover:scale-110 transition cursor-pointer"
                   title="Add to Playlist"
                 >
                   <Plus className="w-4 h-4 text-zinc-400 hover:text-white" />
@@ -387,51 +456,56 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               </div>
               <div className="flex flex-col">
                 <span className="text-xs font-semibold text-zinc-500">No Track Selected</span>
-                <span className="text-[10px] text-zinc-600 font-mono">Choose a song from Home or Search</span>
+                <span className="text-[10px] text-zinc-600 font-mono">Choose a song to start listening</span>
               </div>
             </div>
           )}
         </div>
 
+        {/* Center: Perfectly Symmetric Player Controls */}
         <div className="flex flex-col items-center gap-1.5 flex-1 max-w-xl px-4">
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-6 justify-center">
+            {/* 1. Shuffle */}
             <button
               onClick={() => setIsShuffle(!isShuffle)}
-              className="p-1 transition cursor-pointer"
+              className="p-1 transition cursor-pointer hover:scale-110"
               style={{ color: isShuffle ? 'var(--active-theme-color)' : 'rgb(113, 113, 122)' }}
               title="Shuffle"
             >
               <Shuffle className="w-4 h-4" />
             </button>
 
+            {/* 2. Prev */}
             <button
               onClick={handlePrev}
-              className="text-zinc-400 hover:text-white transition cursor-pointer"
-              title="Previous Track"
+              className="text-zinc-400 hover:text-white transition cursor-pointer hover:scale-110"
+              title="Previous Track (Left Arrow)"
               disabled={!currentTrack}
             >
               <SkipBack className="w-5 h-5 shrink-0" />
             </button>
             
+            {/* 3. CENTER PLAY/PAUSE BUTTON */}
             <button
               onClick={handlePlayPause}
-              className={`w-9 h-9 rounded-full bg-white text-black flex items-center justify-center transition hover:scale-105 active:scale-95 cursor-pointer ${
+              className={`w-10 h-10 rounded-full bg-white text-black flex items-center justify-center transition hover:scale-105 active:scale-95 cursor-pointer shadow-lg mx-1 ${
                 !currentTrack ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              title={isPlaying ? "Pause" : "Play"}
+              title={isPlaying ? "Pause (Space)" : "Play (Space)"}
               disabled={!currentTrack}
             >
               {isPlaying ? (
-                <Pause className="w-5 h-5 fill-black text-black ml-0" />
+                <Pause className="w-5 h-5 fill-black text-black" />
               ) : (
-                <Play className="w-5 h-5 fill-black text-black ml-0.5" />
+                <Play className="w-5 h-5 fill-black text-black translate-x-[1px]" />
               )}
             </button>
 
+            {/* 4. Next */}
             <button
               onClick={handleNext}
-              className="text-zinc-400 hover:text-white transition cursor-pointer relative"
-              title="Next Track"
+              className="text-zinc-400 hover:text-white transition cursor-pointer hover:scale-110 relative"
+              title="Next Track (Right Arrow)"
               disabled={!currentTrack}
             >
               <SkipForward className="w-5 h-5 shrink-0" />
@@ -442,11 +516,12 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               )}
             </button>
 
+            {/* 5. Repeat */}
             <button
               onClick={cycleRepeatMode}
-              className="p-1 transition cursor-pointer"
+              className="p-1 transition cursor-pointer hover:scale-110"
               style={{ color: repeatMode !== 'none' ? 'var(--active-theme-color)' : 'rgb(113, 113, 122)' }}
-              title={`Repeat: ${repeatMode}`}
+              title={`Repeat Mode: ${repeatMode}`}
             >
               {repeatMode === 'one' ? (
                 <Repeat1 className="w-4 h-4" />
@@ -456,6 +531,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
             </button>
           </div>
 
+          {/* Progress Slider */}
           <div className="w-full flex items-center gap-3">
             <span className="text-[10px] text-zinc-400 font-mono select-none w-8 text-right">
               {formatTime(currentTime)}
@@ -485,50 +561,99 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
           {showStreamLimitAlert && (
             <div className="absolute bottom-28 left-1/2 -translate-x-1/2 bg-red-950/95 border border-red-800 text-red-200 text-[11px] px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 animate-bounce z-50">
               <Sparkles className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-              <span>Daily playback limit reached ({getStreamLimit(currentUser.tier)} streams/day). Upgrade your Subscription for unlimited streaming!</span>
-              <button onClick={() => setShowStreamLimitAlert(false)} className="ml-2 hover:text-white font-black cursor-pointer font-mono text-xs p-1">×</button>
+              <span>Daily limit reached ({getStreamLimit(currentUser.tier)} streams/day). Upgrade Subscription for unlimited streaming!</span>
+              <button onClick={() => setShowStreamLimitAlert(false)} className="ml-2 hover:text-white font-black cursor-pointer text-xs p-1">×</button>
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-4 w-1/4 justify-end min-w-[200px]">
+        {/* Right Tools (Crossfade, Queue, Speed, Quality, Volume) */}
+        <div className="flex items-center gap-3 w-1/4 justify-end min-w-[220px]">
+          {/* Crossfade Toggle Button */}
+          <button
+            onClick={() => setCrossfadeEnabled(!crossfadeEnabled)}
+            className="p-1 transition cursor-pointer hover:scale-105 flex items-center gap-0.5 text-[9px] font-mono border rounded px-1.5 py-0.5"
+            style={{ 
+              color: crossfadeEnabled ? 'var(--active-theme-color)' : 'rgb(113, 113, 122)',
+              borderColor: crossfadeEnabled ? 'var(--active-theme-color)' : 'rgb(63, 63, 70)'
+            }}
+            title="Toggle 5s Crossfade transition"
+          >
+            <Zap className="w-3 h-3" />
+            <span className="font-bold">FADE</span>
+          </button>
+
+          {/* Playback Speed Switcher */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+              className="p-1 text-zinc-400 hover:text-white transition cursor-pointer text-[10px] font-mono font-bold border border-zinc-800 rounded hover:border-zinc-600 flex items-center gap-1 px-1.5 py-0.5"
+              title="Playback Speed"
+            >
+              <Gauge className="w-3 h-3" />
+              <span>{playbackRate}x</span>
+            </button>
+            {showSpeedMenu && (
+              <div className="absolute bottom-10 right-0 bg-zinc-900 border border-zinc-750 rounded-lg p-1.5 shadow-xl z-50 flex flex-col gap-1 w-20 text-center font-mono text-xs">
+                {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map(speed => (
+                  <button
+                    key={speed}
+                    onClick={() => {
+                      setPlaybackRate(speed);
+                      setShowSpeedMenu(false);
+                    }}
+                    className={`px-2 py-1 rounded transition text-[11px] ${
+                      playbackRate === speed ? 'bg-zinc-800 font-bold text-emerald-400' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {speed}x
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Queue Button */}
           <button
             onClick={() => setQueueOpen(!queueOpen)}
-            className="p-2 hover:scale-105 transition cursor-pointer"
+            className="p-1.5 hover:scale-105 transition cursor-pointer"
             style={{ color: queueOpen ? 'var(--active-theme-color)' : 'rgb(161, 161, 170)' }}
-            title="Play Queue"
+            title="Play Queue (Q)"
           >
             <ListMusic className="w-4.5 h-4.5" />
           </button>
 
+          {/* Lyrics Button */}
           <button
             onClick={onLyricsClick}
-            className="p-2 hover:text-white hover:scale-105 transition cursor-pointer text-zinc-400 relative"
-            title="Lyrics Console"
+            className="p-1.5 hover:text-white hover:scale-105 transition cursor-pointer text-zinc-400 relative"
+            title="Lyrics Console (L)"
             disabled={!currentTrack}
           >
-            <Mic className="w-4 h-4" />
+            <Mic className="w-4.5 h-4.5" />
             {currentUser.tier === 'gold' && (
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-yellow-400 animate-ping" />
             )}
           </button>
 
+          {/* Download Music */}
           {currentUser.tier !== 'free' && (
             <button
               onClick={handleDownload}
-              className="p-2 hover:text-white hover:scale-105 transition cursor-pointer text-zinc-400"
-              title="Download Music"
+              className="p-1.5 hover:text-white hover:scale-105 transition cursor-pointer text-zinc-400"
+              title="Download Track"
               disabled={!currentTrack}
             >
-              <Download className="w-4 h-4" />
+              <Download className="w-4.5 h-4.5" />
             </button>
           )}
 
-          <div className="flex items-center gap-2">
+          {/* Volume Controls */}
+          <div className="flex items-center gap-1.5">
             <button
               onClick={toggleMute}
               className="text-zinc-400 hover:text-white transition cursor-pointer"
-              title={isMuted ? "Unmute" : "Mute"}
+              title={isMuted ? "Unmute (M)" : "Mute (M)"}
             >
               {isMuted || volume === 0 ? (
                 <VolumeX className="w-4 h-4 text-rose-500" />
@@ -543,23 +668,59 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               step="0.05"
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
-              className="w-20 h-1 bg-zinc-600 hover:bg-zinc-500 rounded-lg appearance-none cursor-pointer focus:outline-none"
+              className="w-16 h-1 bg-zinc-600 hover:bg-zinc-500 rounded-lg appearance-none cursor-pointer focus:outline-none"
               style={{ accentColor: 'var(--active-theme-color)' }}
             />
           </div>
 
-          <div 
-            className="border rounded px-2 py-1 text-[8px] font-mono text-zinc-500 select-none flex flex-col items-center transition-colors"
-            style={{ borderColor: 'var(--active-theme-color)', opacity: 0.8 }}
-          >
-            <span className="leading-none text-zinc-600 uppercase font-bold text-[7px]">FIDELITY</span>
-            <span className="mt-0.5 font-bold transition-colors" style={{ color: 'var(--active-theme-color)' }}>
-              {currentUser.tier === 'gold' ? '24-bit Hi-Res' : currentUser.tier === 'silver' ? '320kbps High' : '128kbps Standard'}
-            </span>
+          {/* Quality Selector Widget */}
+          <div className="relative">
+            <div 
+              onClick={() => setShowQualityMenu(!showQualityMenu)}
+              className="border rounded px-2 py-1 text-[8px] font-mono text-zinc-500 select-none flex flex-col items-center transition-colors cursor-pointer hover:border-white"
+              style={{ borderColor: 'var(--active-theme-color)', opacity: 0.9 }}
+              title="Change Audio Streaming Quality"
+            >
+              <span className="leading-none text-zinc-600 uppercase font-bold text-[7px]">FIDELITY</span>
+              <span className="mt-0.5 font-bold transition-colors" style={{ color: 'var(--active-theme-color)' }}>
+                {audioQuality === 'flac' ? '24-bit FLAC' : audioQuality === '320k' ? '320kbps High' : '128kbps Std'}
+              </span>
+            </div>
+
+            {showQualityMenu && (
+              <div className="absolute bottom-12 right-0 bg-zinc-900 border border-zinc-750 rounded-xl p-2 shadow-2xl z-50 w-36 font-mono text-xs space-y-1">
+                <span className="text-[8px] text-zinc-500 uppercase tracking-widest block font-bold px-2 py-1">Audio Quality</span>
+                <button
+                  onClick={() => { setAudioQuality('128k'); setShowQualityMenu(false); }}
+                  className={`w-full text-left px-2 py-1.5 rounded transition text-[10px] ${
+                    audioQuality === '128k' ? 'bg-zinc-800 font-bold text-emerald-400' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  128kbps Standard
+                </button>
+                <button
+                  onClick={() => { setAudioQuality('320k'); setShowQualityMenu(false); }}
+                  className={`w-full text-left px-2 py-1.5 rounded transition text-[10px] ${
+                    audioQuality === '320k' ? 'bg-zinc-800 font-bold text-emerald-400' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  320kbps High Quality
+                </button>
+                <button
+                  onClick={() => { setAudioQuality('flac'); setShowQualityMenu(false); }}
+                  className={`w-full text-left px-2 py-1.5 rounded transition text-[10px] ${
+                    audioQuality === 'flac' ? 'bg-zinc-800 font-bold text-amber-400' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  24-bit Hi-Res FLAC
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Queue Drawer */}
       {queueOpen && (
         <div 
           className="absolute bottom-24 right-6 w-80 bg-[#121214]/95 backdrop-blur border rounded-xl p-4 shadow-2xl z-50 animate-in slide-in-from-bottom-5 duration-200 transition-colors"
@@ -568,7 +729,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
           <div className="flex items-center justify-between border-b border-zinc-900 pb-2 mb-3">
             <div className="flex items-center gap-1.5">
               <ListMusic className="w-4 h-4" style={{ color: 'var(--active-theme-color)' }} />
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Play Queue</h4>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Play Queue ({customQueue.length})</h4>
             </div>
             <button
               onClick={() => setQueueOpen(false)}
@@ -583,7 +744,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-mono font-bold block mb-1">Now Playing</span>
               {currentTrack ? (
                 <div className="flex items-center gap-2 p-1.5 rounded bg-zinc-900/50">
-                  <img src={currentTrack.coverUrl} className="w-8 h-8 rounded object-cover" referrerPolicy="no-referrer" />
+                  <img src={currentTrack.coverUrl} className="w-8 h-8 rounded object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-bold truncate transition-colors" style={{ color: 'var(--active-theme-color)' }}>{currentTrack.title}</p>
                     <p className="text-[9px] text-zinc-500 truncate">{currentTrack.artistName}</p>
@@ -595,23 +756,44 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
             </div>
 
             <div>
-              <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-mono font-bold block mb-1">Next Up</span>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-mono font-bold block">Up Next</span>
+                {customQueue.length > 0 && (
+                  <button 
+                    onClick={() => setCustomQueue([])} 
+                    className="text-[8px] text-zinc-500 hover:text-rose-400 font-mono uppercase"
+                  >
+                    Clear Queue
+                  </button>
+                )}
+              </div>
               <div className="space-y-1.5">
-                {songs.filter(s => s.id !== currentTrack?.id).slice(0, 5).map((song, idx) => (
+                {(customQueue.length > 0 ? customQueue : songs).filter(s => s.id !== currentTrack?.id).slice(0, 6).map((song, idx) => (
                   <div 
                     key={song.id} 
-                    onClick={() => {
-                      setCurrentTrack(song);
-                      setIsPlaying(true);
-                    }}
-                    className="flex items-center gap-2 p-1 rounded hover:bg-zinc-900/40 cursor-pointer transition"
+                    className="flex items-center justify-between p-1 rounded hover:bg-zinc-900/60 transition group"
                   >
-                    <span className="text-[9px] font-mono text-zinc-600 w-3 text-center">{idx + 1}</span>
-                    <img src={song.coverUrl} className="w-7 h-7 rounded object-cover" referrerPolicy="no-referrer" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-bold text-zinc-300 truncate">{song.title}</p>
-                      <p className="text-[8px] text-zinc-500 truncate">{song.artistName}</p>
+                    <div 
+                      onClick={() => {
+                        setCurrentTrack(song);
+                        setIsPlaying(true);
+                      }}
+                      className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+                    >
+                      <span className="text-[9px] font-mono text-zinc-600 w-3 text-center">{idx + 1}</span>
+                      <img src={song.coverUrl} className="w-7 h-7 rounded object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-bold text-zinc-300 truncate">{song.title}</p>
+                        <p className="text-[8px] text-zinc-500 truncate">{song.artistName}</p>
+                      </div>
                     </div>
+                    <button
+                      onClick={() => removeFromQueue(song.id)}
+                      className="text-zinc-600 hover:text-rose-400 p-1 opacity-0 group-hover:opacity-100 transition"
+                      title="Remove from queue"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -620,6 +802,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
         </div>
       )}
 
+      {/* Mobile Player Bar */}
       {currentTrack && (
         <div 
           onClick={() => setIsMobileExpanded(true)}
@@ -627,7 +810,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
           style={{ borderTop: '2px solid var(--active-theme-color)' }}
         >
           <div className="flex items-center gap-3 min-w-0">
-            <img src={currentTrack.coverUrl} className="w-10 h-10 rounded object-cover" referrerPolicy="no-referrer" />
+            <img src={currentTrack.coverUrl} className="w-10 h-10 rounded object-cover" />
             <div className="min-w-0">
               <p className="text-xs font-bold text-white truncate leading-none mb-1">{currentTrack.title}</p>
               <p className="text-[10px] text-zinc-500 truncate">{currentTrack.artistName}</p>
@@ -639,7 +822,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               onClick={handlePlayPause}
               className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center shadow cursor-pointer"
             >
-              {isPlaying ? <Pause className="w-4 h-4 fill-black text-black" /> : <Play className="w-4 h-4 fill-black text-black ml-0.5" />}
+              {isPlaying ? <Pause className="w-4 h-4 fill-black text-black" /> : <Play className="w-4 h-4 fill-black text-black translate-x-[0.5px]" />}
             </button>
             <button
               onClick={handleNext}
@@ -651,6 +834,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
         </div>
       )}
 
+      {/* Expanded Fullscreen Mobile Modal */}
       {isMobileExpanded && currentTrack && (
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0c0c0e] text-white p-6 animate-in slide-in-from-bottom duration-300 overflow-y-auto">
           <div className="flex items-center justify-between mb-6">
@@ -696,7 +880,6 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 className={`w-full h-full object-cover transition-transform ${
                   isPlaying ? 'animate-spin-slow' : 'animate-spin-slow animate-spin-paused'
                 }`}
-                referrerPolicy="no-referrer"
               />
               <div className="absolute w-12 h-12 rounded-full bg-[#0c0c0e] border-2 border-zinc-900 shadow-inner flex items-center justify-center">
                 <div className="w-3 h-3 rounded-full bg-zinc-850" />
@@ -724,41 +907,33 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               >
                 {currentTrack.artistName}
               </p>
-              {currentTrack.albumName && (
-                <p 
-                  onClick={() => {
-                    navigate(`/search?q=${encodeURIComponent(currentTrack.albumName)}`);
-                    setIsMobileExpanded(false);
-                  }}
-                  className="text-xs text-zinc-500 font-medium truncate hover:underline cursor-pointer block"
-                  title="Search album"
-                >
-                  {currentTrack.albumName}
-                </p>
-              )}
-              {currentUser.tier === 'gold' && (
-                <div className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full text-[10px] text-amber-400 font-mono font-bold mt-1">
-                  <span>🔥 {currentTrack.streams ? currentTrack.streams.toLocaleString() : 0} streams</span>
-                </div>
-              )}
             </div>
           </div>
 
+          {/* Interactive Karaoke Sync Lyrics */}
           <div className="p-4 bg-zinc-900/40 rounded-2xl border border-zinc-850/50 space-y-2 mb-6">
             <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
               <span className="text-[9px] font-mono uppercase font-bold tracking-widest flex items-center gap-1 transition-colors" style={{ color: 'var(--active-theme-color)' }}>
-                <Mic className="w-3 h-3" /> Live Lyrics Console
+                <Mic className="w-3 h-3" /> Live Interactive Lyrics Sync
               </span>
-              <span className="text-[8px] text-zinc-600 font-mono">Karaoke Sync Ready</span>
+              <span className="text-[8px] text-zinc-600 font-mono">Click line to seek</span>
             </div>
             <div className="lyrics-scroll-block h-32 overflow-y-auto text-center py-2 text-xs font-semibold leading-relaxed text-zinc-400 space-y-2">
               {currentTrack.lyrics ? (
                 currentTrack.lyrics.split('\n').map((line, idx) => {
-                  const isActiveLine = idx === Math.min(Math.floor(currentTrack.lyrics.split('\n').length * (currentTime / (duration || 1))), currentTrack.lyrics.split('\n').length - 1);
+                  const lines = currentTrack.lyrics.split('\n');
+                  const targetTime = (duration / lines.length) * idx;
+                  const isActiveLine = idx === Math.min(Math.floor(lines.length * (currentTime / (duration || 1))), lines.length - 1);
                   return (
                     <p 
                       key={idx} 
-                      className={`transition-all duration-300 ${
+                      onClick={() => {
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = targetTime;
+                          setCurrentTime(targetTime);
+                        }
+                      }}
+                      className={`transition-all duration-300 cursor-pointer hover:text-white ${
                         isActiveLine ? 'scale-105 font-bold' : 'opacity-45 text-zinc-300'
                       }`}
                       style={{ color: isActiveLine ? 'var(--active-theme-color)' : undefined }}
@@ -813,7 +988,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center transition active:scale-95 shadow-xl shadow-white/5 cursor-pointer"
                 title="Play / Pause"
               >
-                {isPlaying ? <Pause className="w-6 h-6 fill-black text-black" /> : <Play className="w-6 h-6 fill-black text-black ml-1" />}
+                {isPlaying ? <Pause className="w-6 h-6 fill-black text-black" /> : <Play className="w-6 h-6 fill-black text-black translate-x-[0.5px]" />}
               </button>
 
               <button
@@ -822,11 +997,6 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 title="Next"
               >
                 <SkipForward className="w-6 h-6 fill-current" />
-                {currentUser.role === 'listener' && currentUser.tier === 'free' && (
-                  <span className="absolute -top-1 -right-1 px-1 py-0.2 rounded bg-amber-500 text-[8px] text-black font-bold font-mono">
-                    {skipsRemaining}
-                  </span>
-                )}
               </button>
 
               <button
