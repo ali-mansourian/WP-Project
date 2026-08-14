@@ -10,6 +10,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 from subscriptions.models import SubscriptionPlan, UserSubscription
 from .models import Playlist
+from music.models import Song
 
 
 class PlaylistTests(APITestCase):
@@ -264,6 +265,146 @@ class PlaylistTests(APITestCase):
         response = self.client.patch(
             self.detail_url(playlist.id),
             {'title': 'Hacked Title'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+class PlaylistTrackTests(APITestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            email='owner@example.com',
+            password='StrongPass123!',
+            name='Owner',
+            role='listener',
+            tier='free',
+        )
+
+        self.other_user = User.objects.create_user(
+            email='other-track-user@example.com',
+            password='StrongPass123!',
+            name='Other Track User',
+            role='listener',
+            tier='free',
+        )
+
+        self.artist = User.objects.create_user(
+            email='track-artist@example.com',
+            password='StrongPass123!',
+            name='Track Artist',
+            role='artist',
+        )
+
+        self.playlist = Playlist.objects.create(
+            owner=self.owner,
+            title='Track Playlist',
+        )
+
+        self.approved_song = Song.objects.create(
+            title='Approved Song',
+            artist=self.artist,
+            duration=180,
+            approved=True,
+        )
+
+        self.unapproved_song = Song.objects.create(
+            title='Unapproved Song',
+            artist=self.artist,
+            duration=200,
+            approved=False,
+        )
+
+        self.add_track_url = reverse(
+            'playlists:playlist-add-track',
+            args=[self.playlist.id],
+        )
+
+        self.authenticate(self.owner)
+
+    def authenticate(self, user):
+        token, _ = Token.objects.get_or_create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def remove_track_url(self, song_id):
+        return reverse(
+            'playlists:playlist-remove-track',
+            args=[self.playlist.id, song_id],
+        )
+
+    def test_unauthenticated_user_cannot_add_track(self):
+        self.client.credentials()
+
+        response = self.client.post(
+            self.add_track_url,
+            {'song_id': self.approved_song.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_owner_can_add_track(self):
+        response = self.client.post(
+            self.add_track_url,
+            {'song_id': self.approved_song.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['song']['title'], 'Approved Song')
+        self.assertEqual(self.playlist.tracks.count(), 1)
+
+    def test_add_track_requires_song_id(self):
+        response = self.client.post(self.add_track_url, {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_add_unapproved_song(self):
+        response = self.client.post(
+            self.add_track_url,
+            {'song_id': self.unapproved_song.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_cannot_add_duplicate_track(self):
+        first_response = self.client.post(
+            self.add_track_url,
+            {'song_id': self.approved_song.id},
+            format='json',
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+
+        second_response = self.client.post(
+            self.add_track_url,
+            {'song_id': self.approved_song.id},
+            format='json',
+        )
+
+        self.assertEqual(second_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_owner_can_remove_track(self):
+        self.client.post(
+            self.add_track_url,
+            {'song_id': self.approved_song.id},
+            format='json',
+        )
+
+        response = self.client.delete(self.remove_track_url(self.approved_song.id))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.playlist.tracks.count(), 0)
+
+    def test_remove_missing_track_returns_404(self):
+        response = self.client.delete(self.remove_track_url(99999))
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_non_owner_cannot_add_track(self):
+        self.authenticate(self.other_user)
+
+        response = self.client.post(
+            self.add_track_url,
+            {'song_id': self.approved_song.id},
             format='json',
         )
 

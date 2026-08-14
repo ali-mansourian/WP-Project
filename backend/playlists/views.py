@@ -1,9 +1,18 @@
-from rest_framework import exceptions, permissions, viewsets
+from django.db.models import Max
+from django.shortcuts import get_object_or_404
+from rest_framework import exceptions, permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
+from music.models import Song
 from subscriptions.models import UserSubscription
 
-from .models import Playlist
-from .serializers import PlaylistDetailSerializer, PlaylistListSerializer
+from .models import Playlist, PlaylistTrack
+from .serializers import (
+    PlaylistDetailSerializer,
+    PlaylistListSerializer,
+    PlaylistTrackSerializer,
+)
 
 DEFAULT_FREE_PLAYLIST_LIMIT = 2
 
@@ -60,6 +69,8 @@ class PlaylistViewSet(viewsets.ModelViewSet):
     - PUT /api/playlists/{id}/
     - PATCH /api/playlists/{id}/
     - DELETE /api/playlists/{id}/
+    - POST /api/playlists/{id}/tracks/
+    - DELETE /api/playlists/{id}/tracks/{song_id}/
     """
     permission_classes = [
         permissions.IsAuthenticated,
@@ -90,3 +101,57 @@ class PlaylistViewSet(viewsets.ModelViewSet):
             )
 
         serializer.save(owner=user)
+
+    @action(detail=True, methods=['post'], url_path='tracks')
+    def add_track(self, request, pk=None):
+        """
+        Adds an approved song to the playlist.
+        """
+        playlist = self.get_object()
+
+        song_id = request.data.get('song_id')
+
+        if not song_id:
+            raise exceptions.ValidationError('song_id is required.')
+
+        song = get_object_or_404(Song, id=song_id, approved=True)
+
+        if playlist.tracks.filter(song=song).exists():
+            raise exceptions.ValidationError('This song is already in the playlist.')
+
+        max_position = playlist.tracks.aggregate(
+            max_position=Max('position'),
+        )['max_position']
+
+        next_position = (max_position or 0) + 1
+
+        track = PlaylistTrack.objects.create(
+            playlist=playlist,
+            song=song,
+            position=next_position,
+        )
+
+        serializer = PlaylistTrackSerializer(track)
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=['delete'],
+        url_path=r'tracks/(?P<song_id>[0-9]+)',
+    )
+    def remove_track(self, request, pk=None, song_id=None):
+        """
+        Removes a song from the playlist.
+        """
+        playlist = self.get_object()
+
+        track = get_object_or_404(
+            PlaylistTrack,
+            playlist=playlist,
+            song_id=song_id,
+        )
+
+        track.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
