@@ -1,3 +1,53 @@
+from django.conf import settings
 from django.db import models
 
-# Create your models here.
+
+class Notification(models.Model):
+    """
+    Notification sent to a user.
+
+    Notifications can be about subscriptions, support tickets,
+    playlists, music updates, or general system messages.
+    """
+
+    class Type(models.TextChoices):
+        SYSTEM = 'system', 'System'
+        SUBSCRIPTION = 'subscription', 'Subscription'
+        PLAYLIST = 'playlist', 'Playlist'
+        SUPPORT = 'support', 'Support'
+        MUSIC = 'music', 'Music'
+        ARTIST = 'artist', 'Artist'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+
+    type = models.CharField(
+        max_length=20,
+        choices=Type.choices,
+        default=Type.SYSTEM,
+    )
+
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+
+    link = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text='Optional frontend route or URL related to the notification.',
+    )
+
+    read = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'read']),
+        ]
+
+    def __str__(self):
+        return self.title

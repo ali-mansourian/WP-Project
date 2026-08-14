@@ -8,4 +8,5 @@ urlpatterns = [
     path('api/playlists/', include('playlists.urls')),
     path('api/subscriptions/', include('subscriptions.urls')),
     path('api/support/', include('support.urls')),
+    path('api/notifications/', include('notifications.urls')),
 ]
