@@ -1,9 +1,14 @@
+from datetime import timedelta
+from decimal import Decimal
+
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from accounts.models import User
+from subscriptions.models import SubscriptionPlan, UserSubscription
 from .models import Playlist
 
 
@@ -24,6 +29,28 @@ class PlaylistTests(APITestCase):
 
     def detail_url(self, playlist_id):
         return reverse('playlists:playlist-detail', args=[playlist_id])
+
+    def authenticate(self, user):
+        token, _ = Token.objects.get_or_create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def create_active_subscription(self, user, tier, playlist_limit, duration_months=1):
+        plan = SubscriptionPlan.objects.create(
+            tier=tier,
+            duration_months=duration_months,
+            price=Decimal('9.99'),
+            playlist_limit=playlist_limit,
+            is_active=True,
+        )
+
+        return UserSubscription.objects.create(
+            user=user,
+            plan=plan,
+            status=UserSubscription.Status.ACTIVE,
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
+            price_paid=plan.price,
+        )
 
     def test_unauthenticated_user_cannot_list_playlists(self):
         self.client.credentials()
@@ -82,7 +109,7 @@ class PlaylistTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_gold_listener_can_create_more_playlists(self):
+    def test_listener_with_active_gold_subscription_gets_higher_limit(self):
         gold_listener = User.objects.create_user(
             email='gold@example.com',
             password='StrongPass123!',
@@ -91,11 +118,100 @@ class PlaylistTests(APITestCase):
             tier='gold',
         )
 
-        token, _ = Token.objects.get_or_create(user=gold_listener)
-        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+        self.create_active_subscription(
+            user=gold_listener,
+            tier='gold',
+            playlist_limit=10,
+        )
+
+        self.authenticate(gold_listener)
 
         for i in range(3):
             payload = {'title': f'Gold Playlist {i}'}
+            response = self.client.post(self.playlist_list_url, payload, format='json')
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_listener_with_custom_subscription_limit(self):
+        limited_listener = User.objects.create_user(
+            email='limited@example.com',
+            password='StrongPass123!',
+            name='Limited Listener',
+            role='listener',
+            tier='silver',
+        )
+
+        self.create_active_subscription(
+            user=limited_listener,
+            tier='silver',
+            playlist_limit=1,
+        )
+
+        self.authenticate(limited_listener)
+
+        first_response = self.client.post(
+            self.playlist_list_url,
+            {'title': 'First Playlist'},
+            format='json',
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+
+        second_response = self.client.post(
+            self.playlist_list_url,
+            {'title': 'Second Playlist'},
+            format='json',
+        )
+        self.assertEqual(second_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_expired_subscription_uses_free_limit(self):
+        expired_listener = User.objects.create_user(
+            email='expired@example.com',
+            password='StrongPass123!',
+            name='Expired Listener',
+            role='listener',
+            tier='gold',
+        )
+
+        plan = SubscriptionPlan.objects.create(
+            tier='gold',
+            duration_months=3,
+            price=Decimal('9.99'),
+            playlist_limit=10,
+            is_active=True,
+        )
+
+        UserSubscription.objects.create(
+            user=expired_listener,
+            plan=plan,
+            status=UserSubscription.Status.EXPIRED,
+            start_date=timezone.now() - timedelta(days=100),
+            end_date=timezone.now() - timedelta(days=10),
+            price_paid=plan.price,
+        )
+
+        self.authenticate(expired_listener)
+
+        for i in range(2):
+            payload = {'title': f'Playlist {i}'}
+            response = self.client.post(self.playlist_list_url, payload, format='json')
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        payload = {'title': 'Third Playlist'}
+        response = self.client.post(self.playlist_list_url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_artist_has_no_playlist_limit(self):
+        artist = User.objects.create_user(
+            email='artist@example.com',
+            password='StrongPass123!',
+            name='Artist',
+            role='artist',
+        )
+
+        self.authenticate(artist)
+
+        for i in range(3):
+            payload = {'title': f'Artist Playlist {i}'}
             response = self.client.post(self.playlist_list_url, payload, format='json')
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
