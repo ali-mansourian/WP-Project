@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     path('api/payments/', include('payments.urls')),
     path('api/tracking/', include('tracking.urls')),
+    path('api/analytics/', include('analytics.urls')),
 ]
 
 # Serve media files in development
