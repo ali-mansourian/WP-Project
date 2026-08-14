@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'support',
     'notifications',
     'payments',
+    'tracking',
 ]
 
 MIDDLEWARE = [
