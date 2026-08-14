@@ -43,6 +43,7 @@ class PlaylistListSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        read_only_fields = ['owner', 'created_at', 'updated_at']
 
     def get_song_count(self, obj):
         return obj.tracks.count()
@@ -72,6 +73,7 @@ class PlaylistDetailSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        read_only_fields = ['owner', 'created_at', 'updated_at']
 
     def get_song_count(self, obj):
         return obj.tracks.count()
