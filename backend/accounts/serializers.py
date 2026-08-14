@@ -11,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'name', 'role', 'tier', 'avatar', 'bio',
-            'date_of_birth', 'gender', 'status', 'rejection_reason',
+            'date_of_birth', 'gender', 'preferences', 'status', 'rejection_reason',
             'stage_name', 'is_verified_artist', 'joined_date'
         ]
         read_only_fields = ['id', 'joined_date', 'status', 'rejection_reason']

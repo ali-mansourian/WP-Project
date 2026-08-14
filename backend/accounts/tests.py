@@ -121,6 +121,37 @@ class AuthenticationTests(APITestCase):
         self.assertEqual(response.data['email'], 'me@example.com')
         self.assertEqual(response.data['name'], 'Me User')
 
+    def test_update_current_user_profile(self):
+        user = User.objects.create_user(
+            email='update@example.com',
+            password='StrongPass123!',
+            name='Old Name',
+        )
+
+        login_payload = {
+            'email': 'update@example.com',
+            'password': 'StrongPass123!',
+        }
+
+        login_response = self.client.post(self.login_url, login_payload, format='json')
+        token = login_response.data['token']
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token}')
+        
+        payload = {
+            'name': 'New Name',
+            'preferences': {'theme': 'dark', 'volume': 80}
+        }
+        response = self.client.patch(self.me_url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'New Name')
+        self.assertEqual(response.data['preferences']['theme'], 'dark')
+        
+        user.refresh_from_db()
+        self.assertEqual(user.name, 'New Name')
+        self.assertEqual(user.preferences['theme'], 'dark')
+
     def test_logout_deletes_token(self):
         User.objects.create_user(
             email='logout@example.com',
