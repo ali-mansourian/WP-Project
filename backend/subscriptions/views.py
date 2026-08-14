@@ -1,11 +1,12 @@
 import calendar
 import uuid
 
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework import exceptions, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from payments.models import Payment
 
 from .models import SubscriptionPlan, UserSubscription
 from .serializers import SubscriptionPlanSerializer, UserSubscriptionSerializer
@@ -154,6 +155,18 @@ class PurchaseSubscriptionView(APIView):
             end_date=end_date,
             price_paid=plan.price,
             payment_reference=payment_reference,
+        )
+
+        # Record the completed payment in the payment ledger.
+        Payment.objects.create(
+            user=request.user,
+            subscription=subscription,
+            type=Payment.Type.SUBSCRIPTION_PURCHASE,
+            status=Payment.Status.COMPLETED,
+            method=Payment.Method.CARD,
+            amount=plan.price,
+            currency='USD',
+            reference=payment_reference,
         )
 
         # Update the user's tier so playlist limits and UI can use it.
