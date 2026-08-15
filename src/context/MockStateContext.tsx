@@ -1308,17 +1308,23 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const newSong = await apiFetch('/api/music/songs/', {
         method: 'POST',
-        body: formData // Let the browser set Content-Type for FormData
+        body: formData
       });
 
-      const updatedSongs = [...songs, newSong];
+      const createdSong = normalizeApiSong(newSong);
+
+      const updatedSongs = [createdSong, ...songs];
       setSongs(updatedSongs);
       saveToStorage('spotify_mock_songs', updatedSongs);
 
       // Refresh albums because the Django backend auto-generates the album relationship
       const realAlbums = await apiFetch('/api/music/albums/');
-      setAlbums(realAlbums);
-      saveToStorage('spotify_mock_albums', realAlbums);
+      const normalizedAlbums = Array.isArray(realAlbums)
+        ? realAlbums.map(normalizeApiAlbum)
+        : [];
+
+      setAlbums(normalizedAlbums);
+      saveToStorage('spotify_mock_albums', normalizedAlbums);
 
       return { success: true, message: "Track published successfully!" };
     } catch (err: any) {
@@ -1338,12 +1344,14 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (updates.releaseType) payload.release_type = updates.releaseType;
       if (updates.collaborators !== undefined) payload.collaborators = updates.collaborators;
 
-      const updatedSong = await apiFetch(`/api/music/songs/${songId}/`, {
+      const rawUpdatedSong = await apiFetch(`/api/music/songs/${songId}/`, {
         method: 'PATCH',
         body: JSON.stringify(payload)
       });
 
-      const updatedSongs = songs.map(s => s.id === songId ? updatedSong : s);
+      const normalizedUpdatedSong = normalizeApiSong(rawUpdatedSong);
+
+      const updatedSongs = songs.map(s => s.id === songId ? normalizedUpdatedSong : s);
       setSongs(updatedSongs);
       saveToStorage('spotify_mock_songs', updatedSongs);
 
@@ -1364,9 +1372,14 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       saveToStorage('spotify_mock_songs', updatedSongs);
 
       // Refresh albums in case an empty album was auto-deleted by our Django signal
+      // Refresh albums in case an empty album was auto-deleted by our Django signal
       const realAlbums = await apiFetch('/api/music/albums/');
-      setAlbums(realAlbums);
-      saveToStorage('spotify_mock_albums', realAlbums);
+      const normalizedAlbums = Array.isArray(realAlbums)
+        ? realAlbums.map(normalizeApiAlbum)
+        : [];
+
+      setAlbums(normalizedAlbums);
+      saveToStorage('spotify_mock_albums', normalizedAlbums);
 
       return { success: true, message: "Song deleted successfully." };
     } catch (err: any) {

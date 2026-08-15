@@ -1,6 +1,6 @@
 from django.db.models import Prefetch, Q
 from rest_framework import permissions, viewsets
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from .models import Album, Song
 from .serializers import AlbumSerializer, SongSerializer
@@ -34,7 +34,7 @@ class SongViewSet(viewsets.ModelViewSet):
     serializer_class = SongSerializer
     permission_classes = [IsArtistOrReadOnly]
     # Required for handling file uploads (audio and cover art) via FormData
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         user = self.request.user
