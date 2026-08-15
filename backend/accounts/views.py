@@ -100,6 +100,17 @@ class MeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
+    def delete(self, request):
+        """
+        Permanently deletes the authenticated user's account.
+        Related playlists, tickets, notifications, and songs are cascade-deleted.
+        """
+        user = request.user
+        user.delete()
+        return Response(
+            {'detail': 'Account deleted successfully.'},
+            status=status.HTTP_200_OK,
+        )
 
 
 class LogoutView(APIView):

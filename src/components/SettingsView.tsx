@@ -54,16 +54,20 @@ export const SettingsView: React.FC = () => {
     }, 3000);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (deleteConfirmationText.toLowerCase() !== 'delete') {
       setDeleteError("Please type 'DELETE' in uppercase to confirm account closure.");
       return;
     }
 
-    // Call deleteAccount from context
-    deleteAccount(currentUser.id);
-    setIsDeleteModalOpen(false);
-    navigate('/login');
+    const result = await deleteAccount();
+    
+    if (result.success) {
+      setIsDeleteModalOpen(false);
+      navigate('/login');
+    } else {
+      setDeleteError(result.message);
+    }
   };
 
   return (

@@ -446,7 +446,7 @@ interface MockStateContextProps {
   
   // Profile & Account Operations
   updateProfile: (name: string, dob: string, gender: string, avatarUrl?: string) => void;
-  deleteAccount: (userId: string) => { success: boolean; message: string };
+  deleteAccount: () => Promise<{ success: boolean; message: string }>;
   
   // Ticket / Support Operations
   // Ticket / Support Operations (Connected to Django Backend)
@@ -1206,21 +1206,39 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     saveToStorage('spotify_mock_users', updatedUsers);
   };
 
-  const deleteAccount = (userId: string): { success: boolean; message: string } => {
-    const updatedUsers = users.filter(u => u.id !== userId);
-    setUsers(updatedUsers);
-    saveToStorage('spotify_mock_users', updatedUsers);
-    
-    const updatedPlaylists = playlists.filter(p => p.userId !== userId);
-    setPlaylists(updatedPlaylists);
-    saveToStorage('spotify_mock_playlists', updatedPlaylists);
-    
-    if (currentUser && currentUser.id === userId) {
-      logout();
-    }
-    return { success: true, message: "Account deleted successfully." };
-  };
+  const deleteAccount = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      // Call the real DELETE endpoint
+      await apiFetch('/api/auth/me/', {
+        method: 'DELETE',
+      });
 
+      // Clear all local state and storage after successful deletion
+      setCurrentUser(null);
+      setUsers([]);
+      setPlaylists([]);
+      setNotifications([]);
+      setTickets([]);
+      setApplications([]);
+
+      localStorage.removeItem('spotify_mock_current_user');
+      localStorage.removeItem('spotify_mock_users');
+      localStorage.removeItem('spotify_mock_playlists');
+      localStorage.removeItem('spotify_mock_notifications');
+      localStorage.removeItem('spotify_mock_tickets');
+      localStorage.removeItem('spotify_mock_applications');
+      localStorage.removeItem('spotify_mock_config');
+      localStorage.removeItem('spotify_mock_songs');
+      localStorage.removeItem('spotify_mock_albums');
+
+      return { success: true, message: 'Account deleted successfully.' };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to delete account.',
+      };
+    }
+  };
   // 6. Support Ticket Operations
   const createSupportTicket = async (
     subject: string,
