@@ -455,7 +455,7 @@ interface MockStateContextProps {
   
   // Artist Application Operations
   applyForArtist: (artistName: string, bio: string, genre: string) => void;
-  handleArtistApplication: (appId: string, action: 'approve' | 'reject', rejectionReason?: string) => void;
+  handleArtistApplication: (appId: string | number, action: 'approve' | 'reject', rejectionReason?: string) => Promise<void>;
   resetRejectedArtistToListener: () => void;
   
   // Music Release Operations
@@ -523,36 +523,46 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           localStorage.setItem('spotify_mock_albums', JSON.stringify(normalizedAlbums));
         }
 
-        // Fetch Real Playlists (Only if authenticated, as it requires a token)
-                
+        // Fetch Real Playlists & Applications (Only if authenticated)
         if (storedCurrentUser) {
           const realPlaylists = await apiFetch('/api/playlists/');
           if (Array.isArray(realPlaylists)) {
             const normalizedPlaylists = realPlaylists.map(normalizeApiPlaylist);
             setPlaylists(normalizedPlaylists);
-            saveToStorage('spotify_mock_playlists', normalizedPlaylists);
+            localStorage.setItem('spotify_mock_playlists', JSON.stringify(normalizedPlaylists));
           }
 
-    
-          const realNotifications = await apiFetch('/api/notifications/');
-          if (Array.isArray(realNotifications)) {
-            const normalizedNotifications = realNotifications.map(normalizeApiNotification);
-            setNotifications(normalizedNotifications);
-            saveToStorage('spotify_mock_notifications', normalizedNotifications);
+          // Fetch Real Artist Applications (Only for admin/support users)
+          const parsedUser = JSON.parse(storedCurrentUser);
+          if (parsedUser.role === 'admin' || parsedUser.role === 'support') {
+            try {
+              const realApplications = await apiFetch('/api/auth/admin/artists/');
+              if (Array.isArray(realApplications)) {
+                const mappedApps: ArtistApplication[] = realApplications.map((u: any) => ({
+                  id: u.id,
+                  userId: u.id,
+                  userName: u.name,
+                  userEmail: u.email,
+                  artistName: u.stage_name || u.name,
+                  bio: u.bio || 'No biography provided.',
+                  genre: 'Pending Classification',
+                  status: u.status as 'pending' | 'approved' | 'rejected',
+                  rejectionReason: u.rejection_reason,
+                  createdAt: u.joined_date || u.created_at || '',
+                }));
+                setApplications(mappedApps);
+                localStorage.setItem('spotify_mock_applications', JSON.stringify(mappedApps));
+              }
+            } catch (appError) {
+              console.warn("Could not fetch artist applications:", appError);
+            }
           }
-
-          const realTickets = await apiFetch('/api/support/tickets/');
-          if (Array.isArray(realTickets)) {
-            const normalizedTickets = realTickets.map(normalizeApiTicket);
-            setTickets(normalizedTickets);
-            saveToStorage('spotify_mock_tickets', normalizedTickets);
-          }
-      }
+        }
       } catch (error) {
         console.error("Failed to load data from Django:", error);
       }
     };
-
+    
     fetchRealData();
     
     // 3. Keep mock data for features we haven't wired up to Django yet (Support, Config, Notifications)
@@ -1175,6 +1185,34 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setTickets(updatedTickets);
     saveToStorage('spotify_mock_tickets', updatedTickets);
   };
+  const updateTicketStatus = (ticketId: string, status: 'open' | 'pending' | 'resolved') => {
+    const updatedTickets = tickets.map(t => {
+      if (t.id === ticketId) {
+        return { ...t, status };
+      }
+      return t;
+    });
+    setTickets(updatedTickets);
+    saveToStorage('spotify_mock_tickets', updatedTickets);
+
+    // Notify user of status change
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (ticket) {
+      const statusNotif: Notification = {
+        id: `not-${Date.now()}`,
+        userId: ticket.userId,
+        role: 'listener',
+        title: `Support Ticket Updated`,
+        message: `Your ticket regarding "${ticket.subject}" has been marked as ${status.toUpperCase()} by the support team.`,
+        type: 'info',
+        read: false,
+        createdAt: new Date().toISOString()
+      };
+      const updatedNotifs = [statusNotif, ...notifications];
+      setNotifications(updatedNotifs);
+      saveToStorage('spotify_mock_notifications', updatedNotifs);
+    }
+  };
 
   // 7. Artist Application Operations
   const applyForArtist = (artistName: string, bio: string, genre: string) => {
@@ -1211,116 +1249,50 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     saveToStorage('spotify_mock_notifications', updatedNotifs);
   };
 
-  const handleArtistApplication = (appId: string, action: 'approve' | 'reject', rejectionReason?: string) => {
-    const application = applications.find(a => a.id === appId);
-    if (!application) return;
-
-    const updatedApps = applications.map(a => {
-      if (a.id === appId) {
-        return { 
-          ...a, 
-          status: (action === 'approve' ? 'approved' : 'rejected') as any,
-          rejectionReason: rejectionReason || undefined
-        };
+  const handleArtistApplication = async (appId: string | number, action: 'approve' | 'reject', rejectionReason?: string): Promise<void> => {
+    try {
+      if (action === 'approve') {
+        await apiFetch(`/api/auth/admin/artists/${appId}/approve/`, {
+          method: 'POST'
+        });
+      } else {
+        await apiFetch(`/api/auth/admin/artists/${appId}/reject/`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: rejectionReason || 'Incomplete profile details.' })
+        });
       }
-      return a;
-    });
-    setApplications(updatedApps);
-    saveToStorage('spotify_mock_applications', updatedApps);
 
-    if (action === 'approve') {
-      // Upgrade user's role to artist!
-      const updatedUsers = users.map(u => {
-        if (u.id === application.userId) {
-          return { ...u, role: 'artist' as const, name: application.artistName, status: 'active' as const };
+      // Refresh the applications list from the server
+      const realArtists = await apiFetch('/api/auth/admin/artists/');
+      if (Array.isArray(realArtists)) {
+        const mappedApps: ArtistApplication[] = realArtists.map((u: any) => ({
+          id: u.id,
+          userId: u.id,
+          userName: u.name,
+          userEmail: u.email,
+          artistName: u.stage_name || u.name,
+          bio: u.bio || 'No biography provided.',
+          genre: 'Pending Classification',
+          status: u.status as 'pending' | 'approved' | 'rejected',
+          rejectionReason: u.rejection_reason,
+          createdAt: u.joined_date,
+        }));
+        setApplications(mappedApps);
+        saveToStorage('spotify_mock_applications', mappedApps);
+      }
+
+      // If the current user was the one being approved/rejected, refresh their session
+      if (currentUser && currentUser.id === appId) {
+        const meData = await apiFetch('/api/auth/me/');
+        if (meData) {
+          const updatedUser = { ...currentUser, role: meData.role, status: meData.status };
+          setCurrentUser(updatedUser);
+          saveToStorage('spotify_mock_current_user', updatedUser);
         }
-        return u;
-      });
-      setUsers(updatedUsers);
-      saveToStorage('spotify_mock_users', updatedUsers);
-
-      // If active user is the applicant, update active user state immediately
-      if (currentUser && currentUser.id === application.userId) {
-        const updatedCurrent = { ...currentUser, role: 'artist' as const, name: application.artistName, status: 'active' as const };
-        setCurrentUser(updatedCurrent);
-        saveToStorage('spotify_mock_current_user', updatedCurrent);
       }
 
-      // Notify the User of successful approval
-      const successNotif: Notification = {
-        id: `not-${Date.now()}`,
-        userId: application.userId,
-        role: 'artist',
-        title: `Artist Profile Approved!`,
-        message: `Congratulations! Your request to become an artist has been approved. You can now publish tracks as "${application.artistName}".`,
-        type: 'success',
-        read: false,
-        createdAt: new Date().toISOString()
-      };
-      const updatedNotifs = [successNotif, ...notifications];
-      setNotifications(updatedNotifs);
-      saveToStorage('spotify_mock_notifications', updatedNotifs);
-    } else {
-      // Update applicant user's status to 'rejected'
-      const updatedUsers = users.map(u => {
-        if (u.id === application.userId) {
-          return { ...u, status: 'rejected' as const, rejectionReason: rejectionReason || "Incomplete profile details" };
-        }
-        return u;
-      });
-      setUsers(updatedUsers);
-      saveToStorage('spotify_mock_users', updatedUsers);
-
-      // If active user is the applicant, update active user state immediately
-      if (currentUser && currentUser.id === application.userId) {
-        const updatedCurrent = { ...currentUser, status: 'rejected' as const, rejectionReason: rejectionReason || "Incomplete profile details" };
-        setCurrentUser(updatedCurrent);
-        saveToStorage('spotify_mock_current_user', updatedCurrent);
-      }
-
-      // Notify of rejection with reason
-      const failNotif: Notification = {
-        id: `not-${Date.now()}`,
-        userId: application.userId,
-        role: 'listener',
-        title: `Artist Application Rejected`,
-        message: `Your artist request for "${application.artistName}" was reviewed and declined. Reason: ${rejectionReason || 'Incomplete profile details.'}`,
-        type: 'warning',
-        read: false,
-        createdAt: new Date().toISOString()
-      };
-      const updatedNotifs = [failNotif, ...notifications];
-      setNotifications(updatedNotifs);
-      saveToStorage('spotify_mock_notifications', updatedNotifs);
-    }
-  };
-
-  const updateTicketStatus = (ticketId: string, status: 'open' | 'pending' | 'resolved') => {
-    const updatedTickets = tickets.map(t => {
-      if (t.id === ticketId) {
-        return { ...t, status };
-      }
-      return t;
-    });
-    setTickets(updatedTickets);
-    saveToStorage('spotify_mock_tickets', updatedTickets);
-
-    // Notify user of status change
-    const ticket = tickets.find(t => t.id === ticketId);
-    if (ticket) {
-      const statusNotif: Notification = {
-        id: `not-${Date.now()}`,
-        userId: ticket.userId,
-        role: 'listener',
-        title: `Support Ticket Updated`,
-        message: `Your ticket regarding "${ticket.subject}" has been marked as ${status.toUpperCase()} by the support team.`,
-        type: 'info',
-        read: false,
-        createdAt: new Date().toISOString()
-      };
-      const updatedNotifs = [statusNotif, ...notifications];
-      setNotifications(updatedNotifs);
-      saveToStorage('spotify_mock_notifications', updatedNotifs);
+    } catch (err: any) {
+      console.error("Failed to process artist application:", err);
     }
   };
 

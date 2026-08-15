@@ -2,6 +2,12 @@ from rest_framework import permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import action
+from notifications.models import Notification
+from .serializers import AdminUserSerializer
+from rest_framework import permissions, status, viewsets
+from .models import User
+
 
 from .serializers import (
     LoginSerializer,
@@ -107,3 +113,66 @@ class LogoutView(APIView):
             {'detail': 'Successfully logged out.'},
             status=status.HTTP_200_OK,
         )
+        
+class IsAdminOrSupport(permissions.BasePermission):
+    """
+    Allows access only to admin or support staff.
+    """
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ['admin', 'support']
+        )
+
+class AdminArtistViewSet(viewsets.ModelViewSet):
+    """
+    Admin endpoints to manage pending artist applications.
+    """
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAdminOrSupport]
+
+    def get_queryset(self):
+        # Only return pending or rejected artists for the approval queue
+        return User.objects.filter(
+            role='artist',
+            status__in=['pending', 'rejected']
+        ).order_by('-joined_date')
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve(self, request, pk=None):
+        user = self.get_object()
+        user.status = 'active'
+        user.rejection_reason = ''
+        user.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+
+        # Create notification for the artist
+        Notification.objects.create(
+            user=user,
+            type='artist',
+            title='Artist Profile Approved!',
+            message=f'Congratulations! Your request to become an artist has been approved. You can now publish tracks as "{user.stage_name}".'
+        )
+        
+        serializer = self.get_serializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reject')
+    def reject(self, request, pk=None):
+        user = self.get_object()
+        reason = request.data.get('reason', 'Incomplete profile details.')
+        
+        user.status = 'rejected'
+        user.rejection_reason = reason
+        user.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+
+        # Create notification for the artist
+        Notification.objects.create(
+            user=user,
+            type='artist',
+            title='Artist Application Rejected',
+            message=f'Your artist request for "{user.stage_name}" was reviewed and declined. Reason: {reason}'
+        )
+        
+        serializer = self.get_serializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)

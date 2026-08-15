@@ -80,3 +80,15 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("User account is disabled.")
         data['user'] = user
         return data
+class AdminUserSerializer(serializers.ModelSerializer):
+    """
+    Serializer for admin/support staff to view and update user statuses.
+    """
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'name', 'role', 'tier', 'avatar', 'bio',
+            'date_of_birth', 'gender', 'status', 'rejection_reason',
+            'stage_name', 'joined_date'
+        ]
+        read_only_fields = ['id', 'joined_date']

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AdminArtistViewSet,
     LoginView,
     LogoutView,
     MeView,
@@ -16,4 +17,9 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('me/', MeView.as_view(), name='me'),
     path('logout/', LogoutView.as_view(), name='logout'),
+    
+    # Admin/Support Artist Management
+    path('admin/artists/', AdminArtistViewSet.as_view({'get': 'list'}), name='admin-artist-list'),
+    path('admin/artists/<int:pk>/approve/', AdminArtistViewSet.as_view({'post': 'approve'}), name='admin-artist-approve'),
+    path('admin/artists/<int:pk>/reject/', AdminArtistViewSet.as_view({'post': 'reject'}), name='admin-artist-reject'),
 ]

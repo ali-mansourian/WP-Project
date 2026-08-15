@@ -180,11 +180,11 @@ export const AdminDashboard: React.FC = () => {
     }, 150);
   };
 
-  const handleRejectSubmit = (e: React.FormEvent) => {
+  const handleRejectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rejectModalAppId) return;
 
-    handleArtistApplication(rejectModalAppId, 'reject', rejectReason || 'Incomplete profile or audio files.');
+    await handleArtistApplication(rejectModalAppId, 'reject', rejectReason || 'Incomplete profile or audio files.');
     setRejectModalAppId(null);
     setRejectReason('');
   };
@@ -621,7 +621,7 @@ export const AdminDashboard: React.FC = () => {
                             Reject
                           </button>
                           <button
-                            onClick={() => handleArtistApplication(app.id, 'approve')}
+                            onClick={async () => await handleArtistApplication(app.id, 'approve')}
                             className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black rounded-lg transition text-xs font-bold shadow-md cursor-pointer flex items-center gap-1"
                           >
                             <Check className="w-3.5 h-3.5" />
