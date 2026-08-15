@@ -448,10 +448,11 @@ interface MockStateContextProps {
   deleteAccount: (userId: string) => { success: boolean; message: string };
   
   // Ticket / Support Operations
-  createSupportTicket: (subject: string, message: string) => void;
-  replyToSupportTicket: (ticketId: string, message: string) => void;
-  resolveSupportTicket: (ticketId: string) => void;
-  updateTicketStatus: (ticketId: string, status: 'open' | 'pending' | 'resolved') => void;
+  // Ticket / Support Operations (Connected to Django Backend)
+  createSupportTicket: (subject: string, message: string) => Promise<{ success: boolean; message: string }>;
+  replyToSupportTicket: (ticketId: string | number, message: string) => Promise<{ success: boolean; message: string }>;
+  resolveSupportTicket: (ticketId: string | number) => Promise<{ success: boolean; message: string }>;
+  updateTicketStatus: (ticketId: string | number, status: 'open' | 'pending' | 'resolved') => Promise<{ success: boolean; message: string }>;
   
   // Artist Application Operations
   applyForArtist: (artistName: string, bio: string, genre: string) => void;
@@ -506,60 +507,127 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     // 2. Fetch live data from Django
     const fetchRealData = async () => {
+      // 1. Fetch Public Songs
       try {
-        // Fetch Real Songs    
         const realSongs = await apiFetch('/api/music/songs/');
         if (Array.isArray(realSongs)) {
           const normalizedSongs = realSongs.map(normalizeApiSong);
           setSongs(normalizedSongs);
           localStorage.setItem('spotify_mock_songs', JSON.stringify(normalizedSongs));
         }
+      } catch (error) {
+        console.error('Failed to load songs:', error);
+      }
 
-        // Fetch Real Albums
+      // 2. Fetch Public Albums
+      try {
         const realAlbums = await apiFetch('/api/music/albums/');
         if (Array.isArray(realAlbums)) {
           const normalizedAlbums = realAlbums.map(normalizeApiAlbum);
           setAlbums(normalizedAlbums);
           localStorage.setItem('spotify_mock_albums', JSON.stringify(normalizedAlbums));
         }
+      } catch (error) {
+        console.error('Failed to load albums:', error);
+      }
 
-        // Fetch Real Playlists & Applications (Only if authenticated)
-        if (storedCurrentUser) {
-          const realPlaylists = await apiFetch('/api/playlists/');
-          if (Array.isArray(realPlaylists)) {
-            const normalizedPlaylists = realPlaylists.map(normalizeApiPlaylist);
-            setPlaylists(normalizedPlaylists);
-            localStorage.setItem('spotify_mock_playlists', JSON.stringify(normalizedPlaylists));
-          }
+      // If no user is logged in, clear private/user-specific data
+      if (!storedCurrentUser) {
+        setPlaylists([]);
+        setNotifications([]);
+        setTickets([]);
+        setApplications([]);
+        return;
+      }
 
-          // Fetch Real Artist Applications (Only for admin/support users)
-          const parsedUser = JSON.parse(storedCurrentUser);
-          if (parsedUser.role === 'admin' || parsedUser.role === 'support') {
-            try {
-              const realApplications = await apiFetch('/api/auth/admin/artists/');
-              if (Array.isArray(realApplications)) {
-                const mappedApps: ArtistApplication[] = realApplications.map((u: any) => ({
-                  id: u.id,
-                  userId: u.id,
-                  userName: u.name,
-                  userEmail: u.email,
-                  artistName: u.stage_name || u.name,
-                  bio: u.bio || 'No biography provided.',
-                  genre: 'Pending Classification',
-                  status: u.status as 'pending' | 'approved' | 'rejected',
-                  rejectionReason: u.rejection_reason,
-                  createdAt: u.joined_date || u.created_at || '',
-                }));
-                setApplications(mappedApps);
-                localStorage.setItem('spotify_mock_applications', JSON.stringify(mappedApps));
-              }
-            } catch (appError) {
-              console.warn("Could not fetch artist applications:", appError);
-            }
-          }
+      let parsedUser: any = null;
+      try {
+        parsedUser = JSON.parse(storedCurrentUser);
+      } catch {
+        parsedUser = null;
+      }
+
+      // 3. Fetch Real Playlists
+      try {
+        const realPlaylists = await apiFetch('/api/playlists/');
+        if (Array.isArray(realPlaylists)) {
+          const normalizedPlaylists = realPlaylists.map(normalizeApiPlaylist);
+          setPlaylists(normalizedPlaylists);
+          localStorage.setItem('spotify_mock_playlists', JSON.stringify(normalizedPlaylists));
         }
       } catch (error) {
-        console.error("Failed to load data from Django:", error);
+        console.warn('Could not load playlists:', error);
+        setPlaylists([]);
+      }
+
+      // 4. Fetch Real Notifications
+      try {
+        const realNotifications = await apiFetch('/api/notifications/');
+        if (Array.isArray(realNotifications)) {
+          const normalizedNotifications = realNotifications.map(normalizeApiNotification);
+          setNotifications(normalizedNotifications);
+          localStorage.setItem('spotify_mock_notifications', JSON.stringify(normalizedNotifications));
+        }
+      } catch (error) {
+        console.warn('Could not load notifications:', error);
+        setNotifications([]);
+      }
+
+      // 5. Fetch Real Support Tickets
+      // We fetch the list first, then fetch each ticket detail so replies are included.
+      try {
+        const realTickets = await apiFetch('/api/support/tickets/');
+        if (Array.isArray(realTickets)) {
+          const detailedTickets = await Promise.all(
+            realTickets.map(async (ticket: any) => {
+              try {
+                return await apiFetch(`/api/support/tickets/${ticket.id}/`);
+              } catch {
+                return ticket;
+              }
+            })
+          );
+
+          const normalizedTickets = detailedTickets.map(normalizeApiTicket);
+          setTickets(normalizedTickets);
+          localStorage.setItem('spotify_mock_tickets', JSON.stringify(normalizedTickets));
+        }
+      } catch (error) {
+        console.warn('Could not load support tickets:', error);
+        setTickets([]);
+      }
+
+      // 6. Fetch Real Artist Applications (Admin/Support only)
+      if (parsedUser && (parsedUser.role === 'admin' || parsedUser.role === 'support')) {
+        try {
+          const realApplications = await apiFetch('/api/auth/admin/artists/');
+          if (Array.isArray(realApplications)) {
+            const mappedApps: ArtistApplication[] = realApplications.map((u: any) => ({
+              id: u.id,
+              userId: u.id,
+              userName: u.name || u.email || 'Unknown',
+              userEmail: u.email || '',
+              artistName: u.stage_name || u.name || u.email || 'Unknown Artist',
+              bio: u.bio || 'No biography provided.',
+              genre: 'Pending Classification',
+              status: (u.status === 'rejected' ? 'rejected' : 'pending') as
+                | 'pending'
+                | 'approved'
+                | 'rejected',
+              rejectionReason: u.rejection_reason,
+              createdAt: u.joined_date || u.created_at || '',
+              portfolioFiles: [],
+            }));
+
+            setApplications(mappedApps);
+            localStorage.setItem('spotify_mock_applications', JSON.stringify(mappedApps));
+          }
+        } catch (error) {
+          console.warn('Could not load artist applications:', error);
+          setApplications([]);
+        }
+      } else {
+        setApplications([]);
       }
     };
     
@@ -568,7 +636,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // 3. Keep mock data for features we haven't wired up to Django yet (Support, Config, Notifications)
     
 
-    
+    setTickets([]);
     
     const storedConfig = localStorage.getItem('spotify_mock_config');
     if (storedConfig) setConfig(JSON.parse(storedConfig));
@@ -697,22 +765,31 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 
   const normalizeApiTicket = (raw: any): SupportTicket => {
+    // Map Django status to frontend status
+    let frontendStatus: 'open' | 'pending' | 'resolved' = 'open';
+    if (raw.status === 'in_progress') frontendStatus = 'pending';
+    else if (raw.status === 'resolved' || raw.status === 'closed') frontendStatus = 'resolved';
+
+    const normalizedReplies = Array.isArray(raw.replies)
+      ? raw.replies.map((r: any) => ({
+          id: r.id,
+          senderId: r.author?.id || '',
+          senderName: r.author?.name || r.author?.email || 'Unknown',
+          message: r.message || '',
+          createdAt: r.created_at || '',
+        }))
+      : [];
+
     return {
       id: raw.id,
-      userId: raw.user?.id || raw.user,
-      userName: raw.user?.name || 'User',
+      userId: raw.user?.id || '',
+      userName: raw.user?.name || raw.user?.email || 'Unknown',
       userEmail: raw.user?.email || '',
       subject: raw.subject || '',
       message: raw.message || '',
-      status: raw.status === 'in_progress' ? 'pending' : raw.status as SupportTicket['status'],
+      status: frontendStatus,
       createdAt: raw.created_at || '',
-      replies: Array.isArray(raw.replies) ? raw.replies.map((r: any) => ({
-        id: r.id,
-        senderId: r.author?.id || r.author,
-        senderName: r.author?.name || 'Staff',
-        message: r.message || '',
-        createdAt: r.created_at || ''
-      })) : []
+      replies: normalizedReplies,
     };
   };
 
@@ -1094,123 +1171,125 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // 6. Support Ticket Operations
-  const createSupportTicket = (subject: string, message: string) => {
-    if (!currentUser) return;
-    const newTicket: SupportTicket = {
-      id: `tkt-${Date.now()}`,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userEmail: currentUser.email,
-      subject,
-      message,
-      status: 'open',
-      createdAt: new Date().toISOString(),
-      replies: []
-    };
-
-    const updatedTickets = [newTicket, ...tickets];
-    setTickets(updatedTickets);
-    saveToStorage('spotify_mock_tickets', updatedTickets);
-
-    // Add notification to Support Staff
-    const staffNotif: Notification = {
-      id: `not-${Date.now()}`,
-      userId: 'all',
-      role: 'support',
-      title: `New Support Ticket: ${subject}`,
-      message: `User ${currentUser.name} has submitted a support ticket about: "${subject}"`,
-      type: 'ticket',
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-    const updatedNotifs = [staffNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    saveToStorage('spotify_mock_notifications', updatedNotifs);
-  };
-
-  const replyToSupportTicket = (ticketId: string, message: string) => {
-    if (!currentUser) return;
-    const updatedTickets = tickets.map(t => {
-      if (t.id === ticketId) {
-        const reply = {
-          id: `rep-${Date.now()}`,
-          senderId: currentUser.id,
-          senderName: currentUser.name,
-          message,
-          createdAt: new Date().toISOString()
-        };
-        // If support staff replies, status becomes 'pending', if user replies, back to 'open'
-        const newStatus = currentUser.role === 'support' ? 'pending' as const : 'open' as const;
-        return {
-          ...t,
-          status: newStatus,
-          replies: [...t.replies, reply]
-        };
+  const createSupportTicket = async (
+    subject: string,
+    message: string
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      if (!currentUser) {
+        return { success: false, message: 'You must be logged in to create a ticket.' };
       }
-      return t;
-    });
-    setTickets(updatedTickets);
-    saveToStorage('spotify_mock_tickets', updatedTickets);
 
-    // Notify the receiver
-    const ticket = tickets.find(t => t.id === ticketId);
-    if (ticket) {
-      const isAgent = currentUser.role === 'support';
-      const receiverId = isAgent ? ticket.userId : 'all';
-      const receiverRole = isAgent ? 'listener' as const : 'support' as const;
+      const newTicketRaw = await apiFetch('/api/support/tickets/', {
+        method: 'POST',
+        body: JSON.stringify({
+          subject,
+          message,
+          category: 'other',
+        }),
+      });
 
-      const replyNotif: Notification = {
-        id: `not-${Date.now()}`,
-        userId: receiverId,
-        role: receiverRole,
-        title: `Reply on ticket: ${ticket.subject}`,
-        message: `${currentUser.name} replied: "${message.substring(0, 45)}..."`,
-        type: 'ticket',
-        read: false,
-        createdAt: new Date().toISOString()
+      const newTicket = normalizeApiTicket(newTicketRaw);
+
+      const updatedTickets = [newTicket, ...tickets];
+      setTickets(updatedTickets);
+      saveToStorage('spotify_mock_tickets', updatedTickets);
+
+      return {
+        success: true,
+        message: 'Support ticket submitted successfully!',
       };
-      const updatedNotifs = [replyNotif, ...notifications];
-      setNotifications(updatedNotifs);
-      saveToStorage('spotify_mock_notifications', updatedNotifs);
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to create support ticket.',
+      };
     }
   };
 
-  const resolveSupportTicket = (ticketId: string) => {
-    const updatedTickets = tickets.map(t => {
-      if (t.id === ticketId) {
-        return { ...t, status: 'resolved' as const };
+  const replyToSupportTicket = async (
+    ticketId: string | number,
+    message: string
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      if (!currentUser) {
+        return { success: false, message: 'You must be logged in to reply.' };
       }
-      return t;
-    });
-    setTickets(updatedTickets);
-    saveToStorage('spotify_mock_tickets', updatedTickets);
-  };
-  const updateTicketStatus = (ticketId: string, status: 'open' | 'pending' | 'resolved') => {
-    const updatedTickets = tickets.map(t => {
-      if (t.id === ticketId) {
-        return { ...t, status };
-      }
-      return t;
-    });
-    setTickets(updatedTickets);
-    saveToStorage('spotify_mock_tickets', updatedTickets);
 
-    // Notify user of status change
-    const ticket = tickets.find(t => t.id === ticketId);
-    if (ticket) {
-      const statusNotif: Notification = {
-        id: `not-${Date.now()}`,
-        userId: ticket.userId,
-        role: 'listener',
-        title: `Support Ticket Updated`,
-        message: `Your ticket regarding "${ticket.subject}" has been marked as ${status.toUpperCase()} by the support team.`,
-        type: 'info',
-        read: false,
-        createdAt: new Date().toISOString()
+      await apiFetch(`/api/support/tickets/${ticketId}/replies/`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      });
+
+      // Refetch the ticket detail so replies and status are fully updated
+      const updatedTicketRaw = await apiFetch(`/api/support/tickets/${ticketId}/`);
+      const updatedTicket = normalizeApiTicket(updatedTicketRaw);
+
+      const updatedTickets = tickets.map(t =>
+        t.id === ticketId ? updatedTicket : t
+      );
+
+      setTickets(updatedTickets);
+      saveToStorage('spotify_mock_tickets', updatedTickets);
+
+      return {
+        success: true,
+        message: 'Reply sent successfully.',
       };
-      const updatedNotifs = [statusNotif, ...notifications];
-      setNotifications(updatedNotifs);
-      saveToStorage('spotify_mock_notifications', updatedNotifs);
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to send reply.',
+      };
+    }
+  };
+
+  const resolveSupportTicket = async (
+    ticketId: string | number
+  ): Promise<{ success: boolean; message: string }> => {
+    return updateTicketStatus(ticketId, 'resolved');
+  };
+  
+  const updateTicketStatus = async (
+    ticketId: string | number,
+    status: 'open' | 'pending' | 'resolved'
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      if (!currentUser) {
+        return { success: false, message: 'You must be logged in.' };
+      }
+
+      // Map frontend status names to Django backend status names
+      const backendStatus =
+        status === 'pending'
+          ? 'in_progress'
+          : status;
+
+      const updatedTicketRaw = await apiFetch(`/api/support/tickets/${ticketId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: backendStatus,
+        }),
+      });
+
+      const updatedTicket = normalizeApiTicket(updatedTicketRaw);
+
+      const updatedTickets = tickets.map(t =>
+        t.id === ticketId ? updatedTicket : t
+      );
+
+      setTickets(updatedTickets);
+      saveToStorage('spotify_mock_tickets', updatedTickets);
+
+      return {
+        success: true,
+        message: `Ticket marked as ${status}.`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to update ticket status.',
+      };
     }
   };
 
