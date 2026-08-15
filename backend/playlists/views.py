@@ -14,21 +14,22 @@ from .serializers import (
     PlaylistTrackSerializer,
 )
 
-DEFAULT_FREE_PLAYLIST_LIMIT = 2
-
+DEFAULT_FREE_PLAYLIST_LIMIT = 6
 
 def get_playlist_limit_for_user(user):
     """
-    Returns the playlist limit for a listener based on their active subscription.
-
-    Rules:
-    - Non-listener accounts have no playlist limit.
-    - Listeners with an active subscription use the plan's playlist_limit.
-    - Listeners without an active subscription get the free limit.
+    Returns the playlist limit for a listener based on their active subscription or tier.
+    
+    Rules from Project Document:
+    - Free: 6 playlists
+    - Silver: 100 playlists
+    - Gold: Unlimited (None)
+    - Non-listeners: Unlimited (None)
     """
     if user.role != 'listener':
         return None
 
+    # 1. Check for an active subscription record first
     subscription = UserSubscription.objects.filter(
         user=user,
         status=UserSubscription.Status.ACTIVE,
@@ -37,8 +38,16 @@ def get_playlist_limit_for_user(user):
     ).order_by('-created_at').first()
 
     if subscription and subscription.is_currently_active:
+        if subscription.plan.tier == 'gold':
+            return None  # Unlimited
         return subscription.plan.playlist_limit
 
+    # 2. Fallback to the user's current tier if no active subscription exists
+    if user.tier == 'gold':
+        return None  # Unlimited
+    if user.tier == 'silver':
+        return 100
+        
     return DEFAULT_FREE_PLAYLIST_LIMIT
 
 

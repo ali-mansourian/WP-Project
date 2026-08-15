@@ -1,3 +1,29 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import Notification
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = (
+        'title',
+        'user',
+        'type',
+        'read',
+        'created_at',
+    )
+    list_filter = (
+        'type',
+        'read',
+        'created_at',
+    )
+    search_fields = (
+        'title',
+        'message',
+        'user__email',
+        'user__name',
+    )
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at',)
+    list_editable = ('read',)
+    autocomplete_fields = ('user',)

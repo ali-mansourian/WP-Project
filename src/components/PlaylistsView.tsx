@@ -94,7 +94,7 @@ export const PlaylistsView: React.FC = () => {
   const totalMins = Math.floor(totalDurationSecs / 60);
   const totalSecs = totalDurationSecs % 60;
 
-  const handleCreatePlaylistSubmit = (e: React.FormEvent) => {
+  const handleCreatePlaylistSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -104,7 +104,7 @@ export const PlaylistsView: React.FC = () => {
       return;
     }
 
-    const result = createPlaylist(newPlaylistName, newPlaylistDesc, newPlaylistIsPublic);
+    const result = await createPlaylist(newPlaylistName, newPlaylistDesc, newPlaylistIsPublic);
     if (result.success) {
       setSuccessMsg(result.message);
       setNewPlaylistName('');
@@ -114,7 +114,7 @@ export const PlaylistsView: React.FC = () => {
         setSuccessMsg('');
       }, 1000);
     } else {
-      if (result.message.toLowerCase().includes('limit')) {
+      if (result.message.toLowerCase().includes('limit') || result.message.toLowerCase().includes('maximum')) {
         setLimitMessage(result.message);
         setShowCreateModal(false);
         setShowLimitModal(true);
@@ -339,8 +339,8 @@ export const PlaylistsView: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => {
-                      deletePlaylist(activePlaylist.id);
+                    onClick={async () => {
+                      await deletePlaylist(activePlaylist.id);
                       setSelectedPlaylistId(null);
                     }}
                     className="p-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 hover:text-white border border-rose-900/50 rounded-lg transition cursor-pointer"
@@ -436,9 +436,9 @@ export const PlaylistsView: React.FC = () => {
                             )}
 
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                removeTrackFromPlaylist(activePlaylist.id, song.id);
+                                await removeTrackFromPlaylist(activePlaylist.id, song.id);
                               }}
                               className="text-zinc-600 hover:text-rose-400 transition p-1 cursor-pointer"
                               title="Remove track from playlist"
@@ -523,12 +523,19 @@ export const PlaylistsView: React.FC = () => {
                           Added
                         </span>
                       ) : (
+
                         <button
-                          onClick={() => addTrackToPlaylist(activePlaylist.id, song.id)}
+                          onClick={async () => {
+                            const res = await addTrackToPlaylist(activePlaylist.id, song.id);
+                            if (!res.success) {
+                              console.error(res.message);
+                            }
+                          }}
                           className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-black text-[10px] font-bold rounded transition cursor-pointer"
                         >
                           + Add
                         </button>
+
                       )}
                     </div>
                   );
@@ -643,7 +650,7 @@ export const PlaylistsView: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
 
-            <form onSubmit={(e) => {
+            <form onSubmit={async (e) => {
               e.preventDefault();
               setRenameError('');
               setRenameSuccess('');
@@ -653,7 +660,7 @@ export const PlaylistsView: React.FC = () => {
                 return;
               }
 
-              const result = renamePlaylist(renamePlaylistId, renameName, renameDesc, renameIsPublic);
+              const result = await renamePlaylist(renamePlaylistId, renameName, renameDesc, renameIsPublic);
               if (result.success) {
                 setRenameSuccess(result.message);
                 setTimeout(() => {

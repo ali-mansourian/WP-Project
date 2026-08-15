@@ -429,11 +429,11 @@ interface MockStateContextProps {
   updatePrices: (silver: number, gold: number) => void;
   
   // Playlist Operations (Tier Restricted)
-  createPlaylist: (name: string, description: string, isPublic?: boolean) => { success: boolean; message: string };
-  deletePlaylist: (playlistId: string) => void;
-  renamePlaylist: (playlistId: string, newName: string, newDescription?: string) => { success: boolean; message: string };
-  addTrackToPlaylist: (playlistId: string, songId: string) => { success: boolean; message: string };
-  removeTrackFromPlaylist: (playlistId: string, songId: string) => void;
+  createPlaylist: (name: string, description: string, isPublic?: boolean) => Promise<{ success: boolean; message: string }>;
+  deletePlaylist: (playlistId: string | number) => Promise<void>;
+  renamePlaylist: (playlistId: string | number, newName: string, newDescription?: string, isPublic?: boolean) => Promise<{ success: boolean; message: string }>;
+  addTrackToPlaylist: (playlistId: string | number, songId: string | number) => Promise<{ success: boolean; message: string }>;
+  removeTrackFromPlaylist: (playlistId: string | number, songId: string | number) => Promise<void>;
   
   // Social Operations
   toggleFollowArtist: (artistName: string) => void;
@@ -524,13 +524,29 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
 
         // Fetch Real Playlists (Only if authenticated, as it requires a token)
+                
         if (storedCurrentUser) {
-        const realPlaylists = await apiFetch('/api/playlists/');
-        if (Array.isArray(realPlaylists)) {
-          const normalizedPlaylists = realPlaylists.map(normalizeApiPlaylist);
-          setPlaylists(normalizedPlaylists);
-          localStorage.setItem('spotify_mock_playlists', JSON.stringify(normalizedPlaylists));
-        }
+          const realPlaylists = await apiFetch('/api/playlists/');
+          if (Array.isArray(realPlaylists)) {
+            const normalizedPlaylists = realPlaylists.map(normalizeApiPlaylist);
+            setPlaylists(normalizedPlaylists);
+            saveToStorage('spotify_mock_playlists', normalizedPlaylists);
+          }
+
+    
+          const realNotifications = await apiFetch('/api/notifications/');
+          if (Array.isArray(realNotifications)) {
+            const normalizedNotifications = realNotifications.map(normalizeApiNotification);
+            setNotifications(normalizedNotifications);
+            saveToStorage('spotify_mock_notifications', normalizedNotifications);
+          }
+
+          const realTickets = await apiFetch('/api/support/tickets/');
+          if (Array.isArray(realTickets)) {
+            const normalizedTickets = realTickets.map(normalizeApiTicket);
+            setTickets(normalizedTickets);
+            saveToStorage('spotify_mock_tickets', normalizedTickets);
+          }
       }
       } catch (error) {
         console.error("Failed to load data from Django:", error);
@@ -540,13 +556,9 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fetchRealData();
     
     // 3. Keep mock data for features we haven't wired up to Django yet (Support, Config, Notifications)
-    const storedNotifications = localStorage.getItem('spotify_mock_notifications');
-    if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
-    else setNotifications(DEFAULT_NOTIFICATIONS);
+    
 
-    const storedTickets = localStorage.getItem('spotify_mock_tickets');
-    if (storedTickets) setTickets(JSON.parse(storedTickets));
-    else setTickets(DEFAULT_TICKETS);
+    
     
     const storedConfig = localStorage.getItem('spotify_mock_config');
     if (storedConfig) setConfig(JSON.parse(storedConfig));
@@ -649,6 +661,48 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       songs: normalizedSongs,
       isPublic: raw.visibility === 'public',
       createdAt: raw.created_at || raw.createdAt || '',
+    };
+  };
+
+
+  const normalizeApiNotification = (raw: any): Notification => {
+    // Map backend types to frontend types
+    let frontendType: Notification['type'] = 'info';
+    if (raw.type === 'subscription' || raw.type === 'payment') frontendType = 'payment';
+    else if (raw.type === 'support') frontendType = 'ticket';
+    else if (raw.type === 'artist' || raw.type === 'music') frontendType = 'success';
+    else if (raw.type === 'system') frontendType = 'warning';
+
+    return {
+      id: raw.id,
+      userId: raw.user,
+      role: 'listener', // Fallback role for UI compatibility
+      title: raw.title || '',
+      message: raw.message || '',
+      type: frontendType,
+      read: Boolean(raw.read),
+      createdAt: raw.created_at || '',
+    };
+  };
+
+
+  const normalizeApiTicket = (raw: any): SupportTicket => {
+    return {
+      id: raw.id,
+      userId: raw.user?.id || raw.user,
+      userName: raw.user?.name || 'User',
+      userEmail: raw.user?.email || '',
+      subject: raw.subject || '',
+      message: raw.message || '',
+      status: raw.status === 'in_progress' ? 'pending' : raw.status as SupportTicket['status'],
+      createdAt: raw.created_at || '',
+      replies: Array.isArray(raw.replies) ? raw.replies.map((r: any) => ({
+        id: r.id,
+        senderId: r.author?.id || r.author,
+        senderName: r.author?.name || 'Staff',
+        message: r.message || '',
+        createdAt: r.created_at || ''
+      })) : []
     };
   };
 
@@ -826,110 +880,112 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // 3. Playlist Operations with Tier Enforcement
-  const createPlaylist = (name: string, description: string, isPublic = true): { success: boolean; message: string } => {
-    if (!currentUser) return { success: false, message: "User not found." };
-
-    const userPlaylistsCount = playlists.filter(p => p.userId === currentUser.id).length;
-    
-    if (currentUser.role === 'listener') {
-      if (currentUser.tier === 'free' && userPlaylistsCount >= 6) {
-        return {
-          success: false,
-          message: "Free tier limit: Basic accounts can create a maximum of 6 playlists."
-        };
-      }
-      if (currentUser.tier === 'silver' && userPlaylistsCount >= 100) {
-        return {
-          success: false,
-          message: "Silver tier limit: Maximum of 100 playlists allowed. Upgrade to Gold for unlimited creations."
-        };
-      }
-    }
-
-    const newPlaylist: Playlist = {
-      id: `pl-${Date.now()}`,
-      name,
-      userId: currentUser.id,
-      description: description || "No description provided.",
-      coverUrl: COVERS.acoustic,
-      songIds: [],
-      isPublic,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-
-    const updatedPlaylists = [newPlaylist, ...playlists];
-    setPlaylists(updatedPlaylists);
-    saveToStorage('spotify_mock_playlists', updatedPlaylists);
-
-    return { success: true, message: "Playlist created successfully!" };
-  };
-
-  
-
-  const deletePlaylist = (playlistId: string) => {
-    const updatedPlaylists = playlists.filter(p => p.id !== playlistId);
-    setPlaylists(updatedPlaylists);
-    saveToStorage('spotify_mock_playlists', updatedPlaylists);
-
-    if (currentUser) {
-      const updatedUsers = users.map(u => {
-        if (u.id === currentUser.id) {
-          return { ...u, playlistsCount: Math.max(0, u.playlistsCount - 1) };
-        }
-        return u;
+    // 3. Playlist Operations (Connected to Django Backend)
+  const createPlaylist = async (name: string, description: string, isPublic = true): Promise<{ success: boolean; message: string }> => {
+    try {
+      const payload = {
+        title: name,
+        description: description || '',
+        visibility: isPublic ? 'public' : 'private'
+      };
+      
+      const newPlaylistRaw = await apiFetch('/api/playlists/', {
+        method: 'POST',
+        body: JSON.stringify(payload)
       });
-      setUsers(updatedUsers);
-      saveToStorage('spotify_mock_users', updatedUsers);
-      setCurrentUser({ ...currentUser, playlistsCount: Math.max(0, currentUser.playlistsCount - 1) });
+
+      const newPlaylist = normalizeApiPlaylist(newPlaylistRaw);
+      const updatedPlaylists = [newPlaylist, ...playlists];
+      setPlaylists(updatedPlaylists);
+      saveToStorage('spotify_mock_playlists', updatedPlaylists);
+
+      return { success: true, message: "Playlist created successfully!" };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Failed to create playlist." };
     }
   };
 
-  const renamePlaylist = (playlistId: string, newName: string, newDescription?: string): { success: boolean; message: string } => {
-    if (!newName.trim()) {
-      return { success: false, message: "Playlist name cannot be empty." };
+  const deletePlaylist = async (playlistId: string | number): Promise<void> => {
+    try {
+      await apiFetch(`/api/playlists/${playlistId}/`, { method: 'DELETE' });
+      const updatedPlaylists = playlists.filter(p => p.id !== playlistId);
+      setPlaylists(updatedPlaylists);
+      saveToStorage('spotify_mock_playlists', updatedPlaylists);
+    } catch (err: any) {
+      console.error("Failed to delete playlist:", err);
     }
-    const updatedPlaylists = playlists.map(p => {
-      if (p.id === playlistId) {
-        return { 
-          ...p, 
-          name: newName, 
-          description: newDescription !== undefined ? newDescription : p.description 
-        };
-      }
-      return p;
-    });
-    setPlaylists(updatedPlaylists);
-    saveToStorage('spotify_mock_playlists', updatedPlaylists);
-    return { success: true, message: "Playlist renamed successfully!" };
   };
 
-  const addTrackToPlaylist = (playlistId: string, songId: string): { success: boolean; message: string } => {
-    const playlist = playlists.find(p => p.id === playlistId);
-    if (!playlist) return { success: false, message: "Playlist not found." };
-    if (playlist.songIds.includes(songId)) {
-      return { success: false, message: "This song is already in the playlist." };
-    }
+  const renamePlaylist = async (playlistId: string | number, newName: string, newDescription?: string, isPublic?: boolean): Promise<{ success: boolean; message: string }> => {
+    try {
+      const payload: any = { title: newName };
+      if (newDescription !== undefined) payload.description = newDescription;
+      if (isPublic !== undefined) payload.visibility = isPublic ? 'public' : 'private';
 
-    const updatedPlaylists = playlists.map(p => {
-      if (p.id === playlistId) {
-        return { ...p, songIds: [...p.songIds, songId] };
-      }
-      return p;
-    });
-    setPlaylists(updatedPlaylists);
-    saveToStorage('spotify_mock_playlists', updatedPlaylists);
-    return { success: true, message: "Song added to playlist!" };
+      const updatedRaw = await apiFetch(`/api/playlists/${playlistId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+
+      const updatedPlaylist = normalizeApiPlaylist(updatedRaw);
+      const updatedPlaylists = playlists.map(p => p.id === playlistId ? updatedPlaylist : p);
+      setPlaylists(updatedPlaylists);
+      saveToStorage('spotify_mock_playlists', updatedPlaylists);
+
+      return { success: true, message: "Playlist renamed successfully!" };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Failed to update playlist." };
+    }
   };
 
-  const removeTrackFromPlaylist = (playlistId: string, songId: string) => {
-    const updatedPlaylists = playlists.map(p => {
-      if (p.id === playlistId) {
-        return { ...p, songIds: p.songIds.filter(id => id !== songId) };
-      }
-      return p;
-    });
-    setPlaylists(updatedPlaylists);
-    saveToStorage('spotify_mock_playlists', updatedPlaylists);
+  const addTrackToPlaylist = async (playlistId: string | number, songId: string | number): Promise<{ success: boolean; message: string }> => {
+    try {
+      await apiFetch(`/api/playlists/${playlistId}/tracks/`, {
+        method: 'POST',
+        body: JSON.stringify({ song_id: songId })
+      });
+
+      const songToAdd = songs.find(s => s.id === songId);
+      const updatedPlaylists = playlists.map(p => {
+        if (p.id === playlistId) {
+          return {
+            ...p,
+            songIds: [...p.songIds, songId],
+            songs: [...(p.songs || []), ...(songToAdd ? [songToAdd] : [])]
+          };
+        }
+        return p;
+      });
+      
+      setPlaylists(updatedPlaylists);
+      saveToStorage('spotify_mock_playlists', updatedPlaylists);
+      
+      return { success: true, message: "Song added to playlist!" };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Failed to add song." };
+    }
+  };
+
+  const removeTrackFromPlaylist = async (playlistId: string | number, songId: string | number): Promise<void> => {
+    try {
+      await apiFetch(`/api/playlists/${playlistId}/tracks/${songId}/`, { method: 'DELETE' });
+      
+      const updatedPlaylists = playlists.map(p => {
+        if (p.id === playlistId) {
+          return {
+            ...p,
+            songIds: p.songIds.filter(id => id != songId), // use != to handle string/number mismatch safely
+            songs: (p.songs || []).filter(s => s.id != songId)
+          };
+        }
+        return p;
+      });
+      
+      setPlaylists(updatedPlaylists);
+      saveToStorage('spotify_mock_playlists', updatedPlaylists);
+    } catch (err: any) {
+      console.error("Failed to remove track:", err);
+    }
   };
 
   // 4. Social Operations
@@ -955,31 +1011,41 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // 5. Notifications Operations
-  const markNotificationRead = (id: string) => {
-    const updated = notifications.map(n => {
-      if (n.id === id) return { ...n, read: true };
-      return n;
-    });
-    setNotifications(updated);
-    saveToStorage('spotify_mock_notifications', updated);
+    
+  const markNotificationRead = async (id: string | number) => {
+    try {
+      await apiFetch(`/api/notifications/${id}/read/`, { method: 'POST' });
+      const updated = notifications.map(n => {
+        if (n.id === id) return { ...n, read: true };
+        return n;
+      });
+      setNotifications(updated);
+      saveToStorage('spotify_mock_notifications', updated);
+    } catch (error) {
+      console.error("Failed to mark notification as read:", error);
+    }
   };
 
-  const clearAllNotifications = () => {
-    if (!currentUser) return;
-    const updated = notifications.map(n => {
-      if (n.userId === currentUser.id || n.role === currentUser.role || n.role === 'all') {
-        return { ...n, read: true };
-      }
-      return n;
-    });
-    setNotifications(updated);
-    saveToStorage('spotify_mock_notifications', updated);
+  const clearAllNotifications = async () => {
+    try {
+      await apiFetch('/api/notifications/mark-all-read/', { method: 'POST' });
+      const updated = notifications.map(n => ({ ...n, read: true }));
+      setNotifications(updated);
+      saveToStorage('spotify_mock_notifications', updated);
+    } catch (error) {
+      console.error("Failed to clear all notifications:", error);
+    }
   };
 
-  const deleteNotification = (id: string) => {
-    const updated = notifications.filter(n => n.id !== id);
-    setNotifications(updated);
-    saveToStorage('spotify_mock_notifications', updated);
+  const deleteNotification = async (id: string | number) => {
+    try {
+      await apiFetch(`/api/notifications/${id}/`, { method: 'DELETE' });
+      const updated = notifications.filter(n => n.id !== id);
+      setNotifications(updated);
+      saveToStorage('spotify_mock_notifications', updated);
+    } catch (error) {
+      console.error("Failed to delete notification:", error);
+    }
   };
 
   const updateProfile = (name: string, dob: string, gender: string, avatarUrl?: string) => {
