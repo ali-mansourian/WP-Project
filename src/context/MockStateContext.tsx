@@ -490,38 +490,48 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Initialize data from Django Backend
   useEffect(() => {
     // 1. Initialize user from storage instantly to prevent UI flashing
-    const storedCurrentUser = localStorage.getItem('spotify_mock_current_user');
-    if (storedCurrentUser) {
-      setCurrentUser(JSON.parse(storedCurrentUser));
-    } else {
-      setCurrentUser(null);
-    }
-
+      const storedCurrentUser = localStorage.getItem('spotify_mock_current_user');
+      if (storedCurrentUser) {
+        try {
+          const parsedUser = JSON.parse(storedCurrentUser);
+          const normalizedUser = normalizeApiUser(parsedUser);
+          setCurrentUser(normalizedUser);
+          localStorage.setItem('spotify_mock_current_user', JSON.stringify(normalizedUser));
+        } catch {
+          setCurrentUser(null);
+          localStorage.removeItem('spotify_mock_current_user');
+        }
+      } else {
+        setCurrentUser(null);
+      }
     // 2. Fetch live data from Django
     const fetchRealData = async () => {
       try {
-        // Fetch Real Songs
+        // Fetch Real Songs    
         const realSongs = await apiFetch('/api/music/songs/');
         if (Array.isArray(realSongs)) {
-          setSongs(realSongs);
-          localStorage.setItem('spotify_mock_songs', JSON.stringify(realSongs));
+          const normalizedSongs = realSongs.map(normalizeApiSong);
+          setSongs(normalizedSongs);
+          localStorage.setItem('spotify_mock_songs', JSON.stringify(normalizedSongs));
         }
 
         // Fetch Real Albums
         const realAlbums = await apiFetch('/api/music/albums/');
         if (Array.isArray(realAlbums)) {
-          setAlbums(realAlbums);
-          localStorage.setItem('spotify_mock_albums', JSON.stringify(realAlbums));
+          const normalizedAlbums = realAlbums.map(normalizeApiAlbum);
+          setAlbums(normalizedAlbums);
+          localStorage.setItem('spotify_mock_albums', JSON.stringify(normalizedAlbums));
         }
 
         // Fetch Real Playlists (Only if authenticated, as it requires a token)
         if (storedCurrentUser) {
-          const realPlaylists = await apiFetch('/api/playlists/');
-          if (Array.isArray(realPlaylists)) {
-            setPlaylists(realPlaylists);
-            localStorage.setItem('spotify_mock_playlists', JSON.stringify(realPlaylists));
-          }
+        const realPlaylists = await apiFetch('/api/playlists/');
+        if (Array.isArray(realPlaylists)) {
+          const normalizedPlaylists = realPlaylists.map(normalizeApiPlaylist);
+          setPlaylists(normalizedPlaylists);
+          localStorage.setItem('spotify_mock_playlists', JSON.stringify(normalizedPlaylists));
         }
+      }
       } catch (error) {
         console.error("Failed to load data from Django:", error);
       }
@@ -547,6 +557,99 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Sync state helpers to LocalStorage
   const saveToStorage = (key: string, data: any) => {
     localStorage.setItem(key, JSON.stringify(data));
+  };
+
+// Convert Django API responses into the exact shape expected by the React UI
+
+  const absoluteMediaUrl = (url?: string | null): string => {
+    if (!url) return '';
+    return url;
+  };
+
+  const normalizeApiUser = (raw: any): User => {
+    return {
+      id: raw.id,
+      name: raw.name || raw.stage_name || raw.email || 'User',
+      email: raw.email || '',
+      role: (raw.role || 'listener') as UserRole,
+      tier: (raw.tier || 'free') as ListenerTier,
+      avatarUrl:
+        absoluteMediaUrl(raw.avatar) ||
+        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80',
+      followedArtists: Array.isArray(raw.followed_artists) ? raw.followed_artists : [],
+      playlistsCount: Number(raw.playlists_count || 0),
+      joinedDate: raw.joined_date || raw.created_at || '',
+      token: raw.token,
+      status: raw.status as User['status'],
+      rejectionReason: raw.rejection_reason,
+      dob: raw.date_of_birth || '',
+      gender: raw.gender || '',
+      stage_name: raw.stage_name,
+      stageName: raw.stage_name,
+      bio: raw.bio,
+    };
+  };
+
+  const normalizeApiSong = (raw: any): Song => {
+    return {
+      id: raw.id,
+      title: raw.title || '',
+      artistId: raw.artist ?? '',
+      artistName: raw.artist_name || '',
+      albumId: raw.album ?? null,
+      albumName: raw.album_name || '',
+      duration: Number(raw.duration || 0),
+      audioUrl:
+        absoluteMediaUrl(raw.audio_file) ||
+        'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+      coverUrl: absoluteMediaUrl(raw.cover) || COVERS.neon,
+      lyrics: raw.lyrics || '',
+      streams: Number(raw.streams || 0),
+      releaseDate: raw.release_date || raw.created_at || '',
+      approved: Boolean(raw.approved),
+      releaseType: raw.release_type as Song['releaseType'],
+      genre: raw.genre,
+      releaseYear: raw.release_year != null ? String(raw.release_year) : undefined,
+      collaborators: raw.collaborators,
+    };
+  };
+
+  const normalizeApiAlbum = (raw: any): Album => {
+    const normalizedSongs = Array.isArray(raw.songs)
+      ? raw.songs.map(normalizeApiSong)
+      : [];
+
+    return {
+      id: raw.id,
+      title: raw.title || '',
+      artistId: raw.artist ?? '',
+      artistName: raw.artist_name || '',
+      coverUrl: absoluteMediaUrl(raw.cover) || COVERS.retro,
+      releaseDate: raw.release_date || raw.created_at || '',
+      songIds: normalizedSongs.map(song => song.id),
+      songs: normalizedSongs,
+    };
+  };
+  const normalizeApiPlaylist = (raw: any): Playlist => {
+    const rawSongs = Array.isArray(raw.tracks)
+      ? raw.tracks.map((track: any) => track.song).filter(Boolean)
+      : Array.isArray(raw.songs)
+        ? raw.songs
+        : [];
+
+    const normalizedSongs = rawSongs.map(normalizeApiSong);
+
+    return {
+      id: raw.id,
+      name: raw.title || raw.name || '',
+      userId: raw.owner ?? raw.user ?? '',
+      description: raw.description || '',
+      coverUrl: absoluteMediaUrl(raw.cover) || COVERS.acoustic,
+      songIds: normalizedSongs.map(song => song.id),
+      songs: normalizedSongs,
+      isPublic: raw.visibility === 'public',
+      createdAt: raw.created_at || raw.createdAt || '',
+    };
   };
 
   // 1. Auth Functions (Connected to Django Backend)
@@ -1200,7 +1303,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
          return { success: false, message: "Real audio file is required." };
       }
       if (extra?.coverFile) {
-        formData.append('cover_image', extra.coverFile);
+        formData.append('cover', extra.coverFile);
       }
 
       const newSong = await apiFetch('/api/music/songs/', {

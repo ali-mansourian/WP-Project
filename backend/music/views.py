@@ -1,37 +1,60 @@
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from rest_framework import permissions, viewsets
+from rest_framework.parsers import FormParser, MultiPartParser
 
 from .models import Album, Song
 from .serializers import AlbumSerializer, SongSerializer
 
 
-class SongViewSet(viewsets.ReadOnlyModelViewSet):
+class IsArtistOrReadOnly(permissions.BasePermission):
     """
-    Public read-only endpoint for approved songs.
+    Allows read access to anyone.
+    Allows write access (POST, PUT, PATCH, DELETE) only to authenticated artists or admins.
+    """
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return bool(
+            request.user 
+            and request.user.is_authenticated 
+            and request.user.role in ['artist', 'admin', 'support']
+        )
 
-    Endpoints:
-    - GET /api/music/songs/
-    - GET /api/music/songs/{id}/
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        # Only the artist who owns the song or an admin can modify/delete it
+        return obj.artist == request.user or request.user.role == 'admin' or request.user.is_staff
+
+
+class SongViewSet(viewsets.ModelViewSet):
+    """
+    CRUD endpoints for songs.
     """
     serializer_class = SongSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsArtistOrReadOnly]
+    # Required for handling file uploads (audio and cover art) via FormData
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
-        return Song.objects.filter(approved=True).select_related(
-            'artist',
-            'album',
-        ).order_by('-created_at')
+        user = self.request.user
+        qs = Song.objects.select_related('artist', 'album').order_by('-created_at')
+
+        if user and user.is_authenticated:
+            if user.role == 'artist':
+                # Artists see their own unapproved songs + all approved songs
+                return qs.filter(Q(artist=user) | Q(approved=True))
+            elif user.role in ['admin', 'support'] or user.is_staff:
+                # Admins/Support see everything
+                return qs
+                
+        # Public users and listeners only see approved songs
+        return qs.filter(approved=True)
 
 
 class AlbumViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Public read-only endpoint for albums.
-
-    Albums only include approved songs in this public view.
-
-    Endpoints:
-    - GET /api/music/albums/
-    - GET /api/music/albums/{id}/
     """
     serializer_class = AlbumSerializer
     permission_classes = [permissions.AllowAny]
