@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMockState } from '../context/MockStateContext';
-import { Music, Eye, EyeOff, Mail, Lock, Sparkles, Upload, FileAudio, Trash2 } from 'lucide-react';
+import { Music, Eye, EyeOff, Mail, Lock, Sparkles, Upload, FileAudio, Trash2, Loader2 } from 'lucide-react';
 import './Auth.css';
 
 export const ArtistSignupPage: React.FC = () => {
@@ -15,6 +15,7 @@ export const ArtistSignupPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [portfolioFiles, setPortfolioFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
@@ -57,7 +58,7 @@ export const ArtistSignupPage: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
     setSubmitSuccess(null);
@@ -67,13 +68,15 @@ export const ArtistSignupPage: React.FC = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
       if (!registerArtist) {
         throw new Error('Artist registration service is temporarily unavailable. Please try again later.');
       }
       
-      // Call registration
-      const result = registerArtist(stageName, email, password, portfolioFiles);
+      // NOW ASYNCHRONOUS
+      const result = await registerArtist(stageName, email, password, portfolioFiles);
+      
       if (result && result.success) {
         setSubmitSuccess('Artist profile registered! Your application status has been set to "Pending Approval".');
         setTimeout(() => {
@@ -82,10 +85,12 @@ export const ArtistSignupPage: React.FC = () => {
         }, 1500);
       } else {
         setSubmitError(result ? result.message : 'Registration failed. Please try again.');
+        setIsLoading(false);
       }
     } catch (err: any) {
       console.error("Artist signup failure:", err);
       setSubmitError(err.message || 'An unexpected error occurred during registration. Please try again.');
+      setIsLoading(false);
     }
   };
 
@@ -93,6 +98,7 @@ export const ArtistSignupPage: React.FC = () => {
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isLoading) return;
     if (e.type === "dragenter" || e.type === "dragover") {
       setDragActive(true);
     } else if (e.type === "dragleave") {
@@ -103,6 +109,7 @@ export const ArtistSignupPage: React.FC = () => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isLoading) return;
     setDragActive(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -125,7 +132,9 @@ export const ArtistSignupPage: React.FC = () => {
   };
 
   const triggerFileSelect = () => {
-    fileInputRef.current?.click();
+    if (!isLoading) {
+      fileInputRef.current?.click();
+    }
   };
 
   return (
@@ -167,11 +176,12 @@ export const ArtistSignupPage: React.FC = () => {
                 type="text"
                 placeholder="e.g. DJ SynthWave"
                 value={stageName}
+                disabled={isLoading}
                 onChange={(e) => {
                   setStageName(e.target.value);
                   if (errors.stageName) setErrors({ ...errors, stageName: undefined });
                 }}
-                className={`form-input w-full pl-10 ${errors.stageName ? 'input-error' : ''}`}
+                className={`form-input w-full pl-10 ${errors.stageName ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
             </div>
             {errors.stageName && <span className="error-message">{errors.stageName}</span>}
@@ -187,11 +197,12 @@ export const ArtistSignupPage: React.FC = () => {
                 type="email"
                 placeholder="e.g. producer@example.com"
                 value={email}
+                disabled={isLoading}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (errors.email) setErrors({ ...errors, email: undefined });
                 }}
-                className={`form-input w-full pl-10 ${errors.email ? 'input-error' : ''}`}
+                className={`form-input w-full pl-10 ${errors.email ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
             </div>
             {errors.email && <span className="error-message">{errors.email}</span>}
@@ -207,16 +218,18 @@ export const ArtistSignupPage: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
+                disabled={isLoading}
                 onChange={(e) => {
                   setPassword(e.target.value);
                   if (errors.password) setErrors({ ...errors, password: undefined });
                 }}
-                className={`form-input w-full pl-10 pr-10 ${errors.password ? 'input-error' : ''}`}
+                className={`form-input w-full pl-10 pr-10 ${errors.password ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
               <button
                 type="button"
+                disabled={isLoading}
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300"
+                className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -233,12 +246,13 @@ export const ArtistSignupPage: React.FC = () => {
               type="file"
               multiple
               accept="audio/*"
+              disabled={isLoading}
               onChange={handleFileSelect}
               className="hidden"
             />
 
             <div
-              className={`file-upload-zone ${dragActive ? 'border-emerald-500 bg-[#222222]' : ''} ${errors.portfolio ? 'border-rose-500' : ''}`}
+              className={`file-upload-zone ${dragActive ? 'border-emerald-500 bg-[#222222]' : ''} ${errors.portfolio ? 'border-rose-500' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               onDragEnter={handleDrag}
               onDragOver={handleDrag}
               onDragLeave={handleDrag}
@@ -267,11 +281,12 @@ export const ArtistSignupPage: React.FC = () => {
                     </div>
                     <button
                       type="button"
+                      disabled={isLoading}
                       onClick={(e) => {
                         e.stopPropagation();
                         removeFile(idx);
                       }}
-                      className="remove-file-btn hover:text-rose-300"
+                      className="remove-file-btn hover:text-rose-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -282,8 +297,13 @@ export const ArtistSignupPage: React.FC = () => {
           </div>
 
           {/* Register Button */}
-          <button type="submit" className="submit-btn w-full bg-amber-500 hover:bg-amber-400">
-            Submit Creator Application
+          <button 
+            type="submit" 
+            disabled={isLoading} 
+            className="submit-btn w-full bg-amber-500 hover:bg-amber-400 text-black flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin text-black" />}
+            {isLoading ? 'Submitting Application...' : 'Submit Creator Application'}
           </button>
         </form>
 

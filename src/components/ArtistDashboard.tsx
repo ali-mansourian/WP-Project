@@ -16,7 +16,8 @@ import {
   FileText,
   Users,
   Image as ImageIcon,
-  Activity
+  Activity,
+  Loader2
 } from 'lucide-react';
 
 export const ArtistDashboard: React.FC = () => {
@@ -30,14 +31,18 @@ export const ArtistDashboard: React.FC = () => {
   const [collaborators, setCollaborators] = useState('');
   const [durationSecs, setDurationSecs] = useState('180');
   const [lyrics, setLyrics] = useState('');
-  const [coverPreset, setCoverPreset] = useState('synth');
   
   const [dragActiveAudio, setDragActiveAudio] = useState(false);
   const [audioFileName, setAudioFileName] = useState('');
   const [audioFileSize, setAudioFileSize] = useState('');
+  const [audioFile, setAudioFile] = useState<File | null>(null); // REAL FILE STATE
+
   const [dragActiveCover, setDragActiveCover] = useState(false);
   const [coverFileName, setCoverFileName] = useState('');
+  const [coverFile, setCoverFile] = useState<File | null>(null); // REAL FILE STATE
   
+  const [isUploading, setIsUploading] = useState(false);
+
   const audioInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,8 +54,10 @@ export const ArtistDashboard: React.FC = () => {
   const [editReleaseYear, setEditReleaseYear] = useState('');
   const [editCollaborators, setEditCollaborators] = useState('');
   const [editReleaseType, setEditReleaseType] = useState<'single' | 'album'>('single');
+  const [isEditing, setIsEditing] = useState(false);
 
   const [deletingSong, setDeletingSong] = useState<Song | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
@@ -82,11 +89,6 @@ export const ArtistDashboard: React.FC = () => {
             ? "Your previous artist application was rejected by support specialists. Please contact the platform administrators to appeal or revise your submission."
             : "Your artist application is currently pending evaluation. Our support staff will review your submitted credentials and audio portfolio shortly."}
         </p>
-        <div className="pt-2">
-          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 text-xs font-mono font-bold">
-            🔒 Management Dashboard Locked
-          </span>
-        </div>
       </div>
     );
   }
@@ -98,65 +100,55 @@ export const ArtistDashboard: React.FC = () => {
   const totalListeners = Math.round(totalStreams * 0.74) + (totalTracks * 12);
   const totalEarnings = Number((totalStreams * config.metrics.averagePayoutPerStream).toFixed(2));
 
+  // --- AUDIO FILE HANDLERS ---
   const handleAudioDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActiveAudio(true);
-    } else if (e.type === "dragleave") {
-      setDragActiveAudio(false);
-    }
+    e.preventDefault(); e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") setDragActiveAudio(true);
+    else if (e.type === "dragleave") setDragActiveAudio(false);
   };
-
   const handleAudioDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragActiveAudio(false);
-
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       setAudioFileName(file.name);
       setAudioFileSize((file.size / (1024 * 1024)).toFixed(2) + ' MB');
+      setAudioFile(file);
     }
   };
-
   const handleAudioSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setAudioFileName(file.name);
       setAudioFileSize((file.size / (1024 * 1024)).toFixed(2) + ' MB');
+      setAudioFile(file);
     }
   };
 
+  // --- COVER FILE HANDLERS ---
   const handleCoverDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActiveCover(true);
-    } else if (e.type === "dragleave") {
-      setDragActiveCover(false);
-    }
+    e.preventDefault(); e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") setDragActiveCover(true);
+    else if (e.type === "dragleave") setDragActiveCover(false);
   };
-
   const handleCoverDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragActiveCover(false);
-
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       setCoverFileName(file.name);
+      setCoverFile(file);
     }
   };
-
   const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setCoverFileName(file.name);
+      setCoverFile(file);
     }
   };
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSuccess('');
     setError('');
@@ -172,42 +164,44 @@ export const ArtistDashboard: React.FC = () => {
       return;
     }
 
-    const presetUrls: Record<string, string> = {
-      pop: "https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?w=400&q=80",
-      synth: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&q=80",
-      lofi: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80"
-    };
-    const coverUrl = presetUrls[coverPreset] || presetUrls.synth;
+    if (!audioFile) {
+      setError('An audio file (mp3, wav, flac) is required.');
+      return;
+    }
 
-    uploadSong(title, albumName, duration, lyrics, coverUrl, {
-      releaseType,
-      genre,
-      releaseYear,
-      collaborators,
-      audioFileName: audioFileName || 'studio_track.mp3',
-      coverArtFileName: coverFileName || 'studio_art.png'
-    });
+    setIsUploading(true);
 
-    setSuccess(`"${title}" published successfully to your stream catalog!`);
-    
-    setTitle('');
-    setAlbumName('');
-    setDurationSecs('180');
-    setLyrics('');
-    setCollaborators('');
-    setAudioFileName('');
-    setAudioFileSize('');
-    setCoverFileName('');
-    setReleaseType('single');
-    setGenre('Synthwave');
+    try {
+      // NOW ASYNCHRONOUS
+      const result = await uploadSong(title, albumName, duration, lyrics, '', {
+        releaseType,
+        genre,
+        releaseYear,
+        collaborators,
+        audioFile,
+        coverFile
+      });
 
-    setTimeout(() => setSuccess(''), 4500);
+      if (result && result.success) {
+        setSuccess(`"${title}" published successfully to your stream catalog!`);
+        setTitle(''); setAlbumName(''); setDurationSecs('180'); setLyrics('');
+        setCollaborators(''); setAudioFileName(''); setAudioFileSize(''); setAudioFile(null);
+        setCoverFileName(''); setCoverFile(null); setReleaseType('single'); setGenre('Synthwave');
+        setTimeout(() => setSuccess(''), 4500);
+      } else {
+        setError(result ? result.message : 'Failed to publish track.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during upload.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const startEditing = (song: Song) => {
     setEditingSong(song);
     setEditTitle(song.title);
-    setEditAlbumName(song.albumName);
+    setEditAlbumName(song.albumName || '');
     setEditLyrics(song.lyrics || '');
     setEditGenre(song.genre || 'Pop');
     setEditReleaseYear(song.releaseYear || new Date().getFullYear().toString());
@@ -215,36 +209,58 @@ export const ArtistDashboard: React.FC = () => {
     setEditReleaseType(song.releaseType || 'single');
   };
 
-  const handleEditSave = (e: React.FormEvent) => {
+  const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSong) return;
+    setIsEditing(true);
+    
+    try {
+      const result = await updateSong(editingSong.id, {
+        title: editTitle,
+        albumName: editAlbumName,
+        lyrics: editLyrics,
+        genre: editGenre,
+        releaseYear: editReleaseYear,
+        collaborators: editCollaborators,
+        releaseType: editReleaseType
+      });
 
-    updateSong(editingSong.id, {
-      title: editTitle,
-      albumName: editAlbumName,
-      lyrics: editLyrics,
-      genre: editGenre,
-      releaseYear: editReleaseYear,
-      collaborators: editCollaborators,
-      releaseType: editReleaseType
-    });
-
-    setSuccess(`Successfully updated track "${editTitle}"!`);
-    setEditingSong(null);
-    setTimeout(() => setSuccess(''), 3000);
+      if (result && result.success) {
+        setSuccess(`Successfully updated track "${editTitle}"!`);
+        setEditingSong(null);
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result ? result.message : 'Update failed.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Update failed.');
+    } finally {
+      setIsEditing(false);
+    }
   };
 
   const triggerTakeDown = (song: Song) => {
     setDeletingSong(song);
   };
 
-  const handleTakeDownConfirm = () => {
+  const handleTakeDownConfirm = async () => {
     if (!deletingSong) return;
+    setIsDeleting(true);
 
-    deleteSong(deletingSong.id);
-    setSuccess(`Track "${deletingSong.title}" has been taken down and de-listed.`);
-    setDeletingSong(null);
-    setTimeout(() => setSuccess(''), 3500);
+    try {
+      const result = await deleteSong(deletingSong.id);
+      if (result && result.success) {
+        setSuccess(`Track "${deletingSong.title}" has been taken down and de-listed.`);
+        setDeletingSong(null);
+        setTimeout(() => setSuccess(''), 3500);
+      } else {
+        setError(result ? result.message : 'Failed to delete track.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete track.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -328,6 +344,13 @@ export const ArtistDashboard: React.FC = () => {
         </div>
       )}
 
+      {error && (
+        <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-900/50 text-xs text-rose-300 font-mono flex items-center gap-2 animate-pulse">
+          <AlertCircle className="w-4 h-4" />
+          {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-5 bg-zinc-950/40 border border-zinc-900 p-6 rounded-2xl shadow-xl space-y-6">
           <div className="flex items-center gap-2 border-b border-zinc-900 pb-3">
@@ -338,58 +361,46 @@ export const ArtistDashboard: React.FC = () => {
           <form onSubmit={handleUploadSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Track Title
-                </label>
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Track Title</label>
                 <input
-                  type="text"
-                  required
-                  value={title}
+                  type="text" required value={title}
+                  disabled={isUploading}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Neon Horizon"
-                  className="w-full bg-zinc-950 border border-zinc-900 hover:border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
+                  className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Album Collection Title
-                </label>
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Album / Collection</label>
                 <input
-                  type="text"
-                  required
-                  value={albumName}
+                  type="text" required value={albumName}
+                  disabled={isUploading}
                   onChange={(e) => setAlbumName(e.target.value)}
                   placeholder="e.g. Retro Dreams LP"
-                  className="w-full bg-zinc-950 border border-zinc-900 hover:border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
+                  className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Release Format
-                </label>
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Format</label>
                 <div className="grid grid-cols-2 gap-1 bg-zinc-950 p-1 border border-zinc-900 rounded-lg">
                   <button
-                    type="button"
+                    type="button" disabled={isUploading}
                     onClick={() => setReleaseType('single')}
                     className={`py-1.5 text-[10px] font-bold rounded font-mono transition cursor-pointer ${
-                      releaseType === 'single' 
-                        ? 'bg-emerald-500 text-black shadow' 
-                        : 'text-zinc-400 hover:text-white'
+                      releaseType === 'single' ? 'bg-emerald-500 text-black shadow' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
                     Single
                   </button>
                   <button
-                    type="button"
+                    type="button" disabled={isUploading}
                     onClick={() => setReleaseType('album')}
                     className={`py-1.5 text-[10px] font-bold rounded font-mono transition cursor-pointer ${
-                      releaseType === 'album' 
-                        ? 'bg-emerald-500 text-black shadow' 
-                        : 'text-zinc-400 hover:text-white'
+                      releaseType === 'album' ? 'bg-emerald-500 text-black shadow' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
                     Album
@@ -398,193 +409,117 @@ export const ArtistDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Genre
-                </label>
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Genre</label>
                 <select
-                  value={genre}
+                  value={genre} disabled={isUploading}
                   onChange={(e) => setGenre(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
                 >
                   <option value="Synthwave">Synthwave</option>
                   <option value="Lo-Fi">Lo-Fi Beats</option>
                   <option value="Ambient">Ambient Space</option>
-                  <option value="Future Bass">Future Bass</option>
-                  <option value="Electro Pop">Electro Pop</option>
-                  <option value="Acoustic">Acoustic Folk</option>
+                  <option value="Pop">Pop</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Release Year
-                </label>
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Release Year</label>
                 <input
-                  type="number"
-                  required
-                  value={releaseYear}
+                  type="number" required value={releaseYear} disabled={isUploading}
                   onChange={(e) => setReleaseYear(e.target.value)}
                   placeholder="2026"
-                  className="w-full bg-zinc-950 border border-zinc-900 hover:border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white font-mono"
+                  className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white font-mono"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Collaborators / Features
-                </label>
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Collaborators</label>
                 <input
-                  type="text"
-                  value={collaborators}
+                  type="text" value={collaborators} disabled={isUploading}
                   onChange={(e) => setCollaborators(e.target.value)}
-                  placeholder="e.g. DJ Spark, MC Flow (Optional)"
-                  className="w-full bg-zinc-950 border border-zinc-900 hover:border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
+                  placeholder="e.g. DJ Spark"
+                  className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Duration (seconds)
-                </label>
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Duration (seconds)</label>
                 <input
-                  type="number"
-                  required
-                  value={durationSecs}
+                  type="number" required value={durationSecs} disabled={isUploading}
                   onChange={(e) => setDurationSecs(e.target.value)}
                   placeholder="180"
-                  className="w-full bg-zinc-950 border border-zinc-900 hover:border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white font-mono"
+                  className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white font-mono"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                Mock Audio File Upload
-              </label>
+              <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Audio File Upload</label>
               <div 
-                onDragEnter={handleAudioDrag}
-                onDragOver={handleAudioDrag}
-                onDragLeave={handleAudioDrag}
-                onDrop={handleAudioDrop}
-                onClick={() => audioInputRef.current?.click()}
+                onDragEnter={handleAudioDrag} onDragOver={handleAudioDrag} onDragLeave={handleAudioDrag} onDrop={handleAudioDrop}
+                onClick={() => !isUploading && audioInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
-                  dragActiveAudio 
-                    ? 'border-emerald-500 bg-emerald-950/10' 
-                    : audioFileName 
-                    ? 'border-emerald-800/80 bg-zinc-950' 
-                    : 'border-zinc-800 hover:border-zinc-700 bg-zinc-950/20'
+                  dragActiveAudio ? 'border-emerald-500 bg-emerald-950/10' : audioFile ? 'border-emerald-800/80 bg-zinc-950' : 'border-zinc-800 hover:border-zinc-700 bg-zinc-950/20'
                 }`}
               >
-                <input 
-                  ref={audioInputRef}
-                  type="file" 
-                  accept="audio/*" 
-                  onChange={handleAudioSelect}
-                  className="hidden" 
-                />
-                <FileAudio className={`w-8 h-8 mx-auto mb-2 transition-transform ${audioFileName ? 'text-emerald-400' : 'text-zinc-600'}`} />
-                {audioFileName ? (
+                <input ref={audioInputRef} type="file" accept="audio/*" onChange={handleAudioSelect} className="hidden" disabled={isUploading} />
+                <FileAudio className={`w-8 h-8 mx-auto mb-2 transition-transform ${audioFile ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                {audioFile ? (
                   <div className="space-y-1">
                     <p className="text-xs font-bold text-emerald-400 font-mono truncate max-w-xs mx-auto">{audioFileName}</p>
-                    <p className="text-[10px] text-zinc-500 font-mono">Mock file mapped successfully ({audioFileSize})</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">Ready to upload ({audioFileSize})</p>
                   </div>
                 ) : (
                   <div>
                     <p className="text-xs text-zinc-300 font-medium">Drag & drop your master audio track</p>
-                    <p className="text-[10px] text-zinc-500 mt-1">or click to browse local files (MP3, WAV, FLAC)</p>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Mock Cover Art Upload
-                </label>
-                <div 
-                  onDragEnter={handleCoverDrag}
-                  onDragOver={handleCoverDrag}
-                  onDragLeave={handleCoverDrag}
-                  onDrop={handleCoverDrop}
-                  onClick={() => coverInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
-                    dragActiveCover 
-                      ? 'border-emerald-500 bg-emerald-950/10' 
-                      : coverFileName 
-                      ? 'border-emerald-800/80 bg-zinc-950' 
-                      : 'border-zinc-800 hover:border-zinc-700 bg-zinc-950/20'
-                  }`}
-                >
-                  <input 
-                    ref={coverInputRef}
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handleCoverSelect}
-                    className="hidden" 
-                  />
-                  <ImageIcon className={`w-8 h-8 mx-auto mb-2 transition-transform ${coverFileName ? 'text-emerald-400' : 'text-zinc-600'}`} />
-                  {coverFileName ? (
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-emerald-400 font-mono truncate max-w-xs mx-auto">{coverFileName}</p>
-                      <p className="text-[10px] text-zinc-500 font-mono">Art mapped successfully</p>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="text-xs text-zinc-300 font-medium">Drag cover image</p>
-                      <p className="text-[10px] text-zinc-500 mt-1">or click to browse files</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                  Or Match Preset Cover
-                </label>
-                <div className="space-y-2">
-                  <select
-                    value={coverPreset}
-                    onChange={(e) => setCoverPreset(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
-                  >
-                    <option value="synth">Neon Synth Waves (Unsplash)</option>
-                    <option value="pop">High Energy Electric Pop (Unsplash)</option>
-                    <option value="lofi">Acoustic Chill Lo-Fi (Unsplash)</option>
-                  </select>
-                  <div className="p-2 bg-zinc-950 rounded-lg border border-zinc-900 text-[10px] text-zinc-500 font-mono">
-                    If no custom image is dropped, this preset high-resolution image link will be automatically generated.
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Cover Art Upload</label>
+              <div 
+                onDragEnter={handleCoverDrag} onDragOver={handleCoverDrag} onDragLeave={handleCoverDrag} onDrop={handleCoverDrop}
+                onClick={() => !isUploading && coverInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                  dragActiveCover ? 'border-emerald-500 bg-emerald-950/10' : coverFile ? 'border-emerald-800/80 bg-zinc-950' : 'border-zinc-800 hover:border-zinc-700 bg-zinc-950/20'
+                }`}
+              >
+                <input ref={coverInputRef} type="file" accept="image/*" onChange={handleCoverSelect} className="hidden" disabled={isUploading} />
+                <ImageIcon className={`w-8 h-8 mx-auto mb-2 transition-transform ${coverFile ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                {coverFile ? (
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-emerald-400 font-mono truncate max-w-xs mx-auto">{coverFileName}</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">Ready to upload</p>
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <p className="text-xs text-zinc-300 font-medium">Drag cover image or click to browse</p>
+                  </div>
+                )}
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">
-                Song Lyrics (Rich text preview supported)
-              </label>
+              <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1.5">Song Lyrics</label>
               <textarea
-                value={lyrics}
+                value={lyrics} disabled={isUploading}
                 onChange={(e) => setLyrics(e.target.value)}
-                placeholder="[Verse 1]&#13;Walking down neon lit streets...&#13;[Chorus]&#13;We are the shadows under the code..."
-                className="w-full h-24 bg-zinc-950 border border-zinc-900 hover:border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white resize-none font-mono"
+                placeholder="[Verse 1]&#13;Walking down neon lit streets..."
+                className="w-full h-24 bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white resize-none font-mono"
               />
             </div>
 
-            {error && (
-              <div className="p-3 rounded-lg bg-rose-950/20 border border-rose-900/50 text-xs text-rose-300 font-mono">
-                {error}
-              </div>
-            )}
-
             <button
               type="submit"
-              className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg transition shadow-lg flex items-center justify-center gap-2 cursor-pointer font-mono uppercase tracking-wider"
+              disabled={isUploading}
+              className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg transition shadow-lg flex items-center justify-center gap-2 cursor-pointer font-mono uppercase tracking-wider disabled:opacity-50"
             >
-              <Upload className="w-4 h-4" />
-              <span>Verify & Publish Track</span>
+              {isUploading && <Loader2 className="w-4 h-4 animate-spin text-black" />}
+              <span>{isUploading ? 'Uploading Track...' : 'Verify & Publish Track'}</span>
             </button>
           </form>
         </div>
@@ -611,35 +546,18 @@ export const ArtistDashboard: React.FC = () => {
               artistSongs.map((song) => {
                 const trackRoyalty = Number((song.streams * config.metrics.averagePayoutPerStream).toFixed(2));
                 return (
-                  <div 
-                    key={song.id} 
-                    className="flex flex-col p-4 rounded-xl bg-zinc-950/60 border border-zinc-900 hover:border-zinc-800 transition group gap-4"
-                  >
+                  <div key={song.id} className="flex flex-col p-4 rounded-xl bg-zinc-950/60 border border-zinc-900 hover:border-zinc-800 transition group gap-4">
                     <div className="flex items-start gap-4">
-                      <img
-                        src={song.coverUrl}
-                        alt={song.title}
-                        className="w-12 h-12 rounded-lg object-cover border border-zinc-800 shrink-0 shadow-md"
-                      />
+                      <img src={song.coverUrl} alt={song.title} className="w-12 h-12 rounded-lg object-cover border border-zinc-800 shrink-0 shadow-md" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-white truncate group-hover:text-emerald-400 transition">
-                            {song.title}
-                          </span>
+                          <span className="text-sm font-bold text-white truncate group-hover:text-emerald-400 transition">{song.title}</span>
                           <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase bg-zinc-900 text-emerald-400 border border-emerald-950">
                             {song.releaseType || 'single'}
                           </span>
                         </div>
                         <p className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">
                           Album: <span className="text-zinc-300">{song.albumName}</span> • Genre: <span className="text-zinc-300">{song.genre || 'Pop'}</span> • Year: <span className="text-zinc-300">{song.releaseYear || '2026'}</span>
-                        </p>
-                        {song.collaborators && (
-                          <p className="text-[9px] text-zinc-600 font-mono truncate mt-0.5">
-                            Collabs: {song.collaborators}
-                          </p>
-                        )}
-                        <p className="text-[9px] text-zinc-600 font-mono truncate mt-1">
-                          File: {song.audioFileName || 'studio_track.mp3'}
                         </p>
                       </div>
                       
@@ -658,31 +576,14 @@ export const ArtistDashboard: React.FC = () => {
                         <span className="text-[10px] text-zinc-500 font-mono">
                           ID: <span className="text-zinc-400 font-bold">{song.id}</span>
                         </span>
-                        {song.lyrics && (
-                          <span className="text-[9px] text-emerald-500/80 font-mono flex items-center gap-1 bg-emerald-950/10 px-1.5 py-0.5 rounded border border-emerald-950">
-                            <FileText className="w-3 h-3" /> Lyrics On File
-                          </span>
-                        )}
                       </div>
                       <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => startEditing(song)}
-                          className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-[10px] font-bold font-mono transition flex items-center gap-1 cursor-pointer"
-                          title="Edit Track Metadata"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>Edit</span>
+                        <button onClick={() => startEditing(song)} className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-[10px] font-bold font-mono transition flex items-center gap-1 cursor-pointer">
+                          <Edit className="w-3.5 h-3.5" /><span>Edit</span>
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => triggerTakeDown(song)}
-                          className="px-2.5 py-1.5 rounded-lg bg-rose-950/20 hover:bg-rose-900/40 border border-rose-900/30 text-rose-400 hover:text-rose-300 text-[10px] font-bold font-mono transition flex items-center gap-1 cursor-pointer"
-                          title="Take Down (Delete) from Platforms"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Take Down</span>
+                        <button onClick={() => triggerTakeDown(song)} className="px-2.5 py-1.5 rounded-lg bg-rose-950/20 hover:bg-rose-900/40 border border-rose-900/30 text-rose-400 hover:text-rose-300 text-[10px] font-bold font-mono transition flex items-center gap-1 cursor-pointer">
+                          <Trash2 className="w-3.5 h-3.5" /><span>Take Down</span>
                         </button>
                       </div>
                     </div>
@@ -698,126 +599,49 @@ export const ArtistDashboard: React.FC = () => {
       {editingSong && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-[#121212] border border-zinc-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
-            <button
-              onClick={() => setEditingSong(null)}
-              className="absolute top-4 right-4 text-zinc-400 hover:text-white cursor-pointer"
-            >
+            <button onClick={() => setEditingSong(null)} className="absolute top-4 right-4 text-zinc-400 hover:text-white cursor-pointer">
               <X className="w-5 h-5" />
             </button>
-
             <div className="flex items-center gap-2 border-b border-zinc-900 pb-3 mb-5 text-emerald-400">
               <Edit className="w-5 h-5" />
               <h3 className="text-base font-bold text-white font-mono uppercase tracking-wider">Edit Published Metadata</h3>
             </div>
-
             <form onSubmit={handleEditSave} className="space-y-4 text-left">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">
-                    Track Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
-                  />
+                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">Track Title</label>
+                  <input type="text" required value={editTitle} disabled={isEditing} onChange={(e) => setEditTitle(e.target.value)} className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white" />
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">
-                    Album Collection Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editAlbumName}
-                    onChange={(e) => setEditAlbumName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
-                  />
+                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">Album Title</label>
+                  <input type="text" required value={editAlbumName} disabled={isEditing} onChange={(e) => setEditAlbumName(e.target.value)} className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white" />
                 </div>
               </div>
-
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">
-                    Format
-                  </label>
-                  <select
-                    value={editReleaseType}
-                    onChange={(e) => setEditReleaseType(e.target.value as 'single' | 'album')}
-                    className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
-                  >
+                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">Format</label>
+                  <select value={editReleaseType} disabled={isEditing} onChange={(e) => setEditReleaseType(e.target.value as 'single' | 'album')} className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white">
                     <option value="single">Single</option>
                     <option value="album">Album</option>
                   </select>
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">
-                    Genre
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editGenre}
-                    onChange={(e) => setEditGenre(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
-                  />
+                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">Genre</label>
+                  <input type="text" required value={editGenre} disabled={isEditing} onChange={(e) => setEditGenre(e.target.value)} className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white" />
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">
-                    Release Year
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={editReleaseYear}
-                    onChange={(e) => setEditReleaseYear(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white font-mono"
-                  />
+                  <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">Release Year</label>
+                  <input type="number" required value={editReleaseYear} disabled={isEditing} onChange={(e) => setEditReleaseYear(e.target.value)} className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white font-mono" />
                 </div>
               </div>
-
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">
-                  Collaborators & Features
-                </label>
-                <input
-                  type="text"
-                  value={editCollaborators}
-                  onChange={(e) => setEditCollaborators(e.target.value)}
-                  placeholder="Collaborator list"
-                  className="w-full bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white"
-                />
+                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">Lyrics</label>
+                <textarea value={editLyrics} disabled={isEditing} onChange={(e) => setEditLyrics(e.target.value)} className="w-full h-32 bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white resize-none font-mono" />
               </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-zinc-400 font-mono uppercase mb-1">
-                  Lyrics
-                </label>
-                <textarea
-                  value={editLyrics}
-                  onChange={(e) => setEditLyrics(e.target.value)}
-                  className="w-full h-32 bg-zinc-950 border border-zinc-900 focus:border-emerald-500 focus:outline-none rounded-lg p-2.5 text-xs text-white resize-none font-mono"
-                />
-              </div>
-
               <div className="flex gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setEditingSong(null)}
-                  className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold rounded-lg transition border border-zinc-850 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg transition cursor-pointer font-mono"
-                >
-                  Save Changes
+                <button type="button" onClick={() => setEditingSong(null)} className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold rounded-lg border border-zinc-850">Cancel</button>
+                <button type="submit" disabled={isEditing} className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg flex items-center justify-center gap-2">
+                  {isEditing && <Loader2 className="w-4 h-4 animate-spin text-black" />} Save Changes
                 </button>
               </div>
             </form>
@@ -831,26 +655,14 @@ export const ArtistDashboard: React.FC = () => {
             <div className="w-12 h-12 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-4">
               <Trash2 className="w-6 h-6 animate-pulse" />
             </div>
-
             <h3 className="text-base font-bold text-white font-sans">Take Down Stream?</h3>
             <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-              Are you absolutely sure you want to take down <span className="text-white font-bold font-mono">"{deletingSong.title}"</span>? This will de-list the track from all virtual streams, playlists, and user libraries immediately.
+              Are you sure you want to take down <span className="text-white font-bold font-mono">"{deletingSong.title}"</span>?
             </p>
-
             <div className="flex gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => setDeletingSong(null)}
-                className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold rounded-lg transition border border-zinc-850 cursor-pointer"
-              >
-                No, Keep Track
-              </button>
-              <button
-                type="button"
-                onClick={handleTakeDownConfirm}
-                className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-lg transition cursor-pointer font-mono"
-              >
-                Yes, Take Down
+              <button type="button" onClick={() => setDeletingSong(null)} className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold rounded-lg">No, Keep Track</button>
+              <button type="button" disabled={isDeleting} onClick={handleTakeDownConfirm} className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2">
+                {isDeleting && <Loader2 className="w-4 h-4 animate-spin text-white" />} Yes, Take Down
               </button>
             </div>
           </div>

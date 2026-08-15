@@ -378,7 +378,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     else setRepeatMode('all');
   };
 
-  const isFollowing = currentUser.followedArtists.includes(currentTrack?.artistName || '');
+  // FIX: Added safe fallback to prevent crash if followedArtists is missing
+  const isFollowing = (currentUser.followedArtists || []).includes(currentTrack?.artistName || '');
 
   return (
     <div style={{ '--active-theme-color': activeColor } as React.CSSProperties}>

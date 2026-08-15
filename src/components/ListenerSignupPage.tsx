@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMockState } from '../context/MockStateContext';
-import { Music, Eye, EyeOff, User, Mail, Lock, Calendar, ClipboardCheck, Info, X } from 'lucide-react';
+import { Music, Eye, EyeOff, User, Mail, Lock, Calendar, ClipboardCheck, X, Loader2 } from 'lucide-react';
 import './Auth.css';
 
 export const ListenerSignupPage: React.FC = () => {
@@ -16,6 +16,7 @@ export const ListenerSignupPage: React.FC = () => {
   const [dob, setDob] = useState('');
   const [gender, setGender] = useState('prefer-not-to-say');
   const [agreePolicy, setAgreePolicy] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
@@ -65,7 +66,6 @@ export const ListenerSignupPage: React.FC = () => {
     if (!dob) {
       newErrors.dob = 'Date of birth is required';
     } else {
-      // Basic age validation or checks
       const dobDate = new Date(dob);
       const today = new Date();
       if (dobDate > today) {
@@ -81,7 +81,7 @@ export const ListenerSignupPage: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
     setSubmitSuccess(null);
@@ -91,12 +91,15 @@ export const ListenerSignupPage: React.FC = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
       if (!registerListener) {
         throw new Error('Listener registration service is temporarily unavailable. Please try again later.');
       }
       
-      const result = registerListener(displayName, email, password, dob, gender);
+      // NOW ASYNCHRONOUS
+      const result = await registerListener(displayName, email, password, dob, gender);
+      
       if (result && result.success) {
         setSubmitSuccess('Registration successful! Launching your free stream plan...');
         setTimeout(() => {
@@ -104,10 +107,12 @@ export const ListenerSignupPage: React.FC = () => {
         }, 1200);
       } else {
         setSubmitError(result ? result.message : 'Registration failed. Please try again.');
+        setIsLoading(false);
       }
     } catch (err: any) {
       console.error("Listener signup failure:", err);
       setSubmitError(err.message || 'An unexpected error occurred during registration. Please try again.');
+      setIsLoading(false);
     }
   };
 
@@ -151,11 +156,12 @@ export const ListenerSignupPage: React.FC = () => {
                   type="text"
                   placeholder="e.g. Alex Carter"
                   value={displayName}
+                  disabled={isLoading}
                   onChange={(e) => {
                     setDisplayName(e.target.value);
                     if (errors.displayName) setErrors({ ...errors, displayName: undefined });
                   }}
-                  className={`form-input w-full pl-10 ${errors.displayName ? 'input-error' : ''}`}
+                  className={`form-input w-full pl-10 ${errors.displayName ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
               </div>
               {errors.displayName && <span className="error-message">{errors.displayName}</span>}
@@ -171,11 +177,12 @@ export const ListenerSignupPage: React.FC = () => {
                   type="email"
                   placeholder="e.g. alex@example.com"
                   value={email}
+                  disabled={isLoading}
                   onChange={(e) => {
                     setEmail(e.target.value);
                     if (errors.email) setErrors({ ...errors, email: undefined });
                   }}
-                  className={`form-input w-full pl-10 ${errors.email ? 'input-error' : ''}`}
+                  className={`form-input w-full pl-10 ${errors.email ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
               </div>
               {errors.email && <span className="error-message">{errors.email}</span>}
@@ -193,16 +200,18 @@ export const ListenerSignupPage: React.FC = () => {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   value={password}
+                  disabled={isLoading}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     if (errors.password) setErrors({ ...errors, password: undefined });
                   }}
-                  className={`form-input w-full pl-10 pr-10 ${errors.password ? 'input-error' : ''}`}
+                  className={`form-input w-full pl-10 pr-10 ${errors.password ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
                 <button
                   type="button"
+                  disabled={isLoading}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -220,16 +229,18 @@ export const ListenerSignupPage: React.FC = () => {
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   value={confirmPassword}
+                  disabled={isLoading}
                   onChange={(e) => {
                     setConfirmPassword(e.target.value);
                     if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: undefined });
                   }}
-                  className={`form-input w-full pl-10 pr-10 ${errors.confirmPassword ? 'input-error' : ''}`}
+                  className={`form-input w-full pl-10 pr-10 ${errors.confirmPassword ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
                 <button
                   type="button"
+                  disabled={isLoading}
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
                 >
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -248,11 +259,12 @@ export const ListenerSignupPage: React.FC = () => {
                   id="listener-dob"
                   type="date"
                   value={dob}
+                  disabled={isLoading}
                   onChange={(e) => {
                     setDob(e.target.value);
                     if (errors.dob) setErrors({ ...errors, dob: undefined });
                   }}
-                  className={`form-input w-full pl-10 ${errors.dob ? 'input-error' : ''}`}
+                  className={`form-input w-full pl-10 ${errors.dob ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
               </div>
               {errors.dob && <span className="error-message">{errors.dob}</span>}
@@ -264,8 +276,9 @@ export const ListenerSignupPage: React.FC = () => {
               <select
                 id="listener-gender"
                 value={gender}
+                disabled={isLoading}
                 onChange={(e) => setGender(e.target.value)}
-                className="form-input w-full"
+                className={`form-input w-full ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <option value="male">Male</option>
                 <option value="female">Female</option>
@@ -282,18 +295,20 @@ export const ListenerSignupPage: React.FC = () => {
                 id="policy-chk"
                 type="checkbox"
                 checked={agreePolicy}
+                disabled={isLoading}
                 onChange={(e) => {
                   setAgreePolicy(e.target.checked);
                   if (errors.agreePolicy) setErrors({ ...errors, agreePolicy: undefined });
                 }}
-                className="checkbox-input"
+                className={`checkbox-input ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
               <label htmlFor="policy-chk" className="text-xs text-zinc-400 leading-normal select-none">
                 I have read and agree to the{' '}
                 <button
                   type="button"
                   onClick={() => setPolicyOpen(true)}
-                  className="text-emerald-400 underline font-semibold hover:text-emerald-300 cursor-pointer"
+                  disabled={isLoading}
+                  className="text-emerald-400 underline font-semibold hover:text-emerald-300 cursor-pointer disabled:opacity-50"
                 >
                   Privacy Policy terms & agreements
                 </button>
@@ -302,8 +317,13 @@ export const ListenerSignupPage: React.FC = () => {
             {errors.agreePolicy && <span className="error-message">{errors.agreePolicy}</span>}
           </div>
 
-          <button type="submit" className="submit-btn w-full">
-            Complete Registration & Stream
+          <button 
+            type="submit" 
+            disabled={isLoading} 
+            className="submit-btn w-full flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isLoading ? 'Creating Account...' : 'Complete Registration & Stream'}
           </button>
         </form>
 
@@ -317,7 +337,7 @@ export const ListenerSignupPage: React.FC = () => {
 
       {/* Privacy Policy terms popup */}
       {policyOpen && (
-        <div className="forgot-pass-modal-overlay">
+        <div className="forgot-pass-modal-overlay z-50">
           <div className="forgot-pass-modal max-w-lg">
             <button
               onClick={() => setPolicyOpen(false)}
@@ -328,27 +348,27 @@ export const ListenerSignupPage: React.FC = () => {
 
             <h3 className="modal-title flex items-center gap-2">
               <ClipboardCheck className="w-5 h-5 text-emerald-400" />
-              <span>Mock Platform Privacy Policy</span>
+              <span>Platform Privacy Policy</span>
             </h3>
-            <div className="modal-desc space-y-3 max-h-80 overflow-y-auto pr-1 text-xs text-zinc-400 scrollbar-thin mt-4">
+            <div className="modal-desc space-y-3 max-h-80 overflow-y-auto pr-1 text-xs text-zinc-400 scrollbar-thin mt-4 text-left">
               <p className="font-semibold text-white">1. Information We Collect</p>
               <p>
-                We capture display profiles, emails, encrypted password hashes, age profiles (to enforce streaming legal requirements), and user-authored playlist selections locally inside your browser sandbox.
+                We capture display profiles, emails, encrypted password hashes, age profiles (to enforce streaming legal requirements), and user-authored playlist selections locally inside your browser sandbox and our secure servers.
               </p>
               
-              <p className="font-semibold text-white">2. Local Storage Persistence</p>
+              <p className="font-semibold text-white">2. Data Persistence</p>
               <p>
-                All information compiled is saved exclusively inside your local storage instance. No telemetry, audio logs, credentials, or personal profiles are transmitted to secondary cloud databases, platforms, or third-party advertising companies.
+                No telemetry, audio logs, credentials, or personal profiles are transmitted to third-party advertising companies. Your data is strictly used to provide streaming services.
               </p>
 
               <p className="font-semibold text-white">3. Premium Tier Upgrades</p>
               <p>
-                Upgrading to our Silver or Gold streaming models charges virtual mock funds in our state. No real credit transactions occur.
+                Upgrading to our Silver or Gold streaming models charges via secure payment gateways.
               </p>
 
               <p className="font-semibold text-white">4. User Rights</p>
               <p>
-                You may clear your browser cookies and storage caches at any point to completely wipe your listener profiles, playlist histories, and credential files.
+                You may request account deletion at any time from your settings panel to completely wipe your listener profiles, playlist histories, and credentials.
               </p>
             </div>
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMockState } from '../context/MockStateContext';
-import { Music, Eye, EyeOff, Mail, Lock, ShieldAlert, CheckCircle2, HelpCircle, X } from 'lucide-react';
+import { Music, Eye, EyeOff, Mail, Lock, ShieldAlert, CheckCircle2, HelpCircle, X, Loader2 } from 'lucide-react';
 import './Auth.css';
 
 export const LoginPage: React.FC = () => {
@@ -12,6 +12,7 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Validation/Error states
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -44,35 +45,44 @@ export const LoginPage: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
     setAuthSuccess(null);
 
     if (!validateForm()) return;
 
-    const result = authenticateUser(email, password);
-    if (result.success && result.user) {
-      setAuthSuccess(`Welcome back, ${result.user.name}!`);
-      setTimeout(() => {
-        // Route users dynamically to their correct role dashboard
-        const role = result.user?.role;
-        if (role === 'admin') {
-          navigate('/admin-dashboard');
-        } else if (role === 'support') {
-          navigate('/support-agent-dashboard');
-        } else if (role === 'artist') {
-          if (result.user?.status === 'pending' || result.user?.status === 'rejected') {
-            navigate('/dashboard'); // ProtectedRoute will render the Pending screen
+    setIsLoading(true);
+    try {
+      // NOW ASYNCHRONOUS
+      const result = await authenticateUser(email, password);
+      
+      if (result.success && result.user) {
+        setAuthSuccess(`Welcome back, ${result.user.name}!`);
+        setTimeout(() => {
+          // Route users dynamically to their correct role dashboard
+          const role = result.user?.role;
+          if (role === 'admin') {
+            navigate('/admin-dashboard');
+          } else if (role === 'support') {
+            navigate('/support-agent-dashboard');
+          } else if (role === 'artist') {
+            if (result.user?.status === 'pending' || result.user?.status === 'rejected') {
+              navigate('/dashboard'); // ProtectedRoute will render the Pending screen
+            } else {
+              navigate('/artist-dashboard');
+            }
           } else {
-            navigate('/artist-dashboard');
+            navigate('/dashboard');
           }
-        } else {
-          navigate('/dashboard');
-        }
-      }, 1000);
-    } else {
-      setAuthError(result.message);
+        }, 1000);
+      } else {
+        setAuthError(result.message);
+        setIsLoading(false);
+      }
+    } catch (error: any) {
+      setAuthError(error.message || 'An unexpected error occurred during login.');
+      setIsLoading(false);
     }
   };
 
@@ -134,11 +144,12 @@ export const LoginPage: React.FC = () => {
                 type="email"
                 placeholder="e.g. alex@free.com"
                 value={email}
+                disabled={isLoading}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (errors.email) setErrors({ ...errors, email: undefined });
                 }}
-                className={`form-input w-full pl-10 ${errors.email ? 'input-error' : ''}`}
+                className={`form-input w-full pl-10 ${errors.email ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 autoComplete="email"
               />
             </div>
@@ -151,7 +162,8 @@ export const LoginPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setForgotOpen(true)}
-                className="text-xs text-emerald-400 hover:underline cursor-pointer"
+                disabled={isLoading}
+                className="text-xs text-emerald-400 hover:underline cursor-pointer disabled:opacity-50"
               >
                 Forgot Password?
               </button>
@@ -163,17 +175,19 @@ export const LoginPage: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
+                disabled={isLoading}
                 onChange={(e) => {
                   setPassword(e.target.value);
                   if (errors.password) setErrors({ ...errors, password: undefined });
                 }}
-                className={`form-input w-full pl-10 pr-10 ${errors.password ? 'input-error' : ''}`}
+                className={`form-input w-full pl-10 pr-10 ${errors.password ? 'input-error' : ''} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 autoComplete="current-password"
               />
               <button
                 type="button"
+                disabled={isLoading}
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300 cursor-pointer disabled:opacity-50"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -181,8 +195,13 @@ export const LoginPage: React.FC = () => {
             {errors.password && <span className="error-message">{errors.password}</span>}
           </div>
 
-          <button type="submit" className="submit-btn w-full">
-            Log In to Dashboard
+          <button 
+            type="submit" 
+            disabled={isLoading} 
+            className="submit-btn w-full flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isLoading ? 'Authenticating...' : 'Log In to Dashboard'}
           </button>
         </form>
 

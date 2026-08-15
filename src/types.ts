@@ -1,37 +1,51 @@
 export type UserRole = 'listener' | 'artist' | 'support' | 'admin';
 export type ListenerTier = 'free' | 'silver' | 'gold';
 
+export interface UserPreferences {
+  theme?: 'dark' | 'light';
+  language?: string;
+  autoPlay?: boolean;
+  highQualityAudio?: boolean;
+  emailNotifications?: boolean;
+}
+
 export interface User {
-  id: string;
+  id: string | number;
   name: string;
   email: string;
   role: UserRole;
   tier: ListenerTier;
   avatarUrl: string;
-  followedArtists: string[]; // IDs of artist users or artist names
+  followedArtists: string[];
   playlistsCount: number;
   joinedDate: string;
-  password?: string; // Credentials support
-  status?: 'active' | 'pending' | 'rejected'; // For pending artist states
-  dob?: string; // Listener demographic data
-  gender?: string; // Listener demographic data
-  dailyStreamsCount?: number; // Daily stream limit tracker
+  password?: string;
+  token?: string;
+  status?: 'active' | 'pending' | 'rejected';
+  rejectionReason?: string;
+  dob?: string;
+  gender?: string;
+  stage_name?: string;
+  stageName?: string;
+  bio?: string;
+  dailyStreamsCount?: number;
+  preferences?: UserPreferences;
 }
 
 export interface Song {
-  id: string;
+  id: string | number;
   title: string;
-  artistId: string;
+  artistId: string | number;
   artistName: string;
-  albumId: string;
-  albumName: string;
+  albumId?: string | number | null;
+  albumName?: string;
   duration: number; // in seconds
-  audioUrl: string; // for mock audio player
+  audioUrl: string;
   coverUrl: string;
-  lyrics: string;
+  lyrics?: string;
   streams: number;
   releaseDate: string;
-  approved: boolean; // Artist uploads may need approval
+  approved: boolean;
   releaseType?: 'single' | 'album';
   genre?: string;
   releaseYear?: string;
@@ -41,48 +55,50 @@ export interface Song {
 }
 
 export interface Album {
-  id: string;
+  id: string | number;
   title: string;
-  artistId: string;
+  artistId: string | number;
   artistName: string;
   coverUrl: string;
   releaseDate: string;
-  songIds: string[];
+  songIds: (string | number)[];
+  songs?: Song[];
 }
 
 export interface Playlist {
-  id: string;
+  id: string | number;
   name: string;
-  userId: string; // creator ID
+  userId: string | number;
   description: string;
   coverUrl: string;
-  songIds: string[];
+  songIds: (string | number)[];
+  songs?: Song[];
   isPublic: boolean;
   createdAt: string;
 }
 
 export interface Notification {
-  id: string;
-  userId: string | 'all'; // target specific user or all of a role
+  id: string | number;
+  userId: string | number | 'all';
   role: UserRole | 'all';
   title: string;
   message: string;
-  type: 'warning' | 'info' | 'success' | 'ticket';
+  type: 'warning' | 'info' | 'success' | 'ticket' | 'payment';
   read: boolean;
   createdAt: string;
 }
 
 export interface TicketReply {
-  id: string;
-  senderId: string;
+  id: string | number;
+  senderId: string | number;
   senderName: string;
   message: string;
   createdAt: string;
 }
 
 export interface SupportTicket {
-  id: string;
-  userId: string;
+  id: string | number;
+  userId: string | number;
   userName: string;
   userEmail: string;
   subject: string;
@@ -93,24 +109,43 @@ export interface SupportTicket {
 }
 
 export interface ArtistApplication {
-  id: string;
-  userId: string;
+  id: string | number;
+  userId: string | number;
   userName: string;
   userEmail: string;
   artistName: string;
   bio: string;
   genre: string;
   status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
   createdAt: string;
   portfolioFiles?: string[];
 }
 
+export interface ArtistSettlement {
+  id: string | number;
+  artist: string | number;
+  artist_name?: string;
+  artistName?: string;
+  period: string;
+  total_streams: number;
+  totalStreams?: number;
+  unique_listeners: number;
+  uniqueListeners?: number;
+  amount_due: string | number;
+  amountDue?: string | number;
+  status: 'pending' | 'settled';
+  status_label?: string;
+  created_at: string;
+  settled_at?: string | null;
+}
+
 export interface RevenueMetrics {
   totalRevenue: number;
-  artistPayoutRate: number; // e.g. 0.7 (70%)
-  platformKeepRate: number; // e.g. 0.3 (30%)
+  artistPayoutRate: number; // e.g. 0.70
+  platformKeepRate: number; // e.g. 0.30
   totalStreams: number;
-  averagePayoutPerStream: number; // calculated e.g. 0.0049
+  averagePayoutPerStream: number;
 }
 
 export interface SystemConfig {

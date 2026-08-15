@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 import {
   User,
   Song,
@@ -415,10 +416,12 @@ interface MockStateContextProps {
   config: SystemConfig;
   
   // Auth Functions
-  authenticateUser: (email: string, password: string) => { success: boolean; message: string; user?: User };
-  registerListener: (name: string, email: string, password: string, dob: string, gender: string) => { success: boolean; message: string; user?: User };
-  registerArtist: (stageName: string, email: string, password: string, portfolioFiles?: any[]) => { success: boolean; message: string; user?: User };
-  logout: () => void;
+
+  // Auth Functions (Now Async)
+  authenticateUser: (email: string, password: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  registerListener: (name: string, email: string, password: string, dob: string, gender: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  registerArtist: (stageName: string, email: string, password: string, portfolioFiles?: File[]) => Promise<{ success: boolean; message: string; user?: User }>;
+  logout: () => Promise<void>;
   switchUser: (userId: string) => void;
   
   // Subscription / Tier Operations
@@ -462,17 +465,10 @@ interface MockStateContextProps {
     duration: number, 
     lyrics: string, 
     coverUrl?: string,
-    extra?: {
-      releaseType?: 'single' | 'album';
-      genre?: string;
-      releaseYear?: string;
-      collaborators?: string;
-      audioFileName?: string;
-      coverArtFileName?: string;
-    }
-  ) => void;
-  updateSong: (songId: string, updates: Partial<Song>) => void;
-  deleteSong: (songId: string) => void;
+    extra?: any
+  ) => Promise<{ success: boolean; message: string }>;
+  updateSong: (songId: string | number, updates: Partial<Song>) => Promise<{ success: boolean; message: string }>;
+  deleteSong: (songId: string | number) => Promise<{ success: boolean; message: string }>;
   adminPublishSong: (title: string, artistId: string, artistName: string, albumName: string, duration: number, lyrics: string, coverUrl?: string) => void;
   incrementSongStreams: (songId: string) => void;
 }
@@ -491,73 +487,61 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
 
   // Initialize data from LocalStorage or seed defaults
+  // Initialize data from Django Backend
   useEffect(() => {
-    const storedUsers = localStorage.getItem('spotify_mock_users');
-    const storedSongs = localStorage.getItem('spotify_mock_songs');
-    const storedAlbums = localStorage.getItem('spotify_mock_albums');
-    const storedPlaylists = localStorage.getItem('spotify_mock_playlists');
-    const storedNotifications = localStorage.getItem('spotify_mock_notifications');
-    const storedTickets = localStorage.getItem('spotify_mock_tickets');
-    const storedApplications = localStorage.getItem('spotify_mock_applications');
-    const storedConfig = localStorage.getItem('spotify_mock_config');
+    // 1. Initialize user from storage instantly to prevent UI flashing
     const storedCurrentUser = localStorage.getItem('spotify_mock_current_user');
-
-    if (storedUsers) setUsers(JSON.parse(storedUsers));
-    else {
-      setUsers(DEFAULT_USERS);
-      localStorage.setItem('spotify_mock_users', JSON.stringify(DEFAULT_USERS));
-    }
-
-    if (storedSongs) setSongs(JSON.parse(storedSongs));
-    else {
-      setSongs(DEFAULT_SONGS);
-      localStorage.setItem('spotify_mock_songs', JSON.stringify(DEFAULT_SONGS));
-    }
-
-    if (storedAlbums) setAlbums(JSON.parse(storedAlbums));
-    else {
-      setAlbums(DEFAULT_ALBUMS);
-      localStorage.setItem('spotify_mock_albums', JSON.stringify(DEFAULT_ALBUMS));
-    }
-
-    if (storedPlaylists) setPlaylists(JSON.parse(storedPlaylists));
-    else {
-      setPlaylists(DEFAULT_PLAYLISTS);
-      localStorage.setItem('spotify_mock_playlists', JSON.stringify(DEFAULT_PLAYLISTS));
-    }
-
-    if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
-    else {
-      setNotifications(DEFAULT_NOTIFICATIONS);
-      localStorage.setItem('spotify_mock_notifications', JSON.stringify(DEFAULT_NOTIFICATIONS));
-    }
-
-    if (storedTickets) setTickets(JSON.parse(storedTickets));
-    else {
-      setTickets(DEFAULT_TICKETS);
-      localStorage.setItem('spotify_mock_tickets', JSON.stringify(DEFAULT_TICKETS));
-    }
-
-    if (storedApplications) setApplications(JSON.parse(storedApplications));
-    else {
-      setApplications(DEFAULT_APPLICATIONS);
-      localStorage.setItem('spotify_mock_applications', JSON.stringify(DEFAULT_APPLICATIONS));
-    }
-
-    if (storedConfig) setConfig(JSON.parse(storedConfig));
-    else {
-      setConfig(DEFAULT_CONFIG);
-      localStorage.setItem('spotify_mock_config', JSON.stringify(DEFAULT_CONFIG));
-    }
-
     if (storedCurrentUser) {
       setCurrentUser(JSON.parse(storedCurrentUser));
     } else {
-      // Auto login as Free user Alex for a great initial load experience
-      const initialUser = DEFAULT_USERS[0];
-      setCurrentUser(initialUser);
-      localStorage.setItem('spotify_mock_current_user', JSON.stringify(initialUser));
+      setCurrentUser(null);
     }
+
+    // 2. Fetch live data from Django
+    const fetchRealData = async () => {
+      try {
+        // Fetch Real Songs
+        const realSongs = await apiFetch('/api/music/songs/');
+        if (Array.isArray(realSongs)) {
+          setSongs(realSongs);
+          localStorage.setItem('spotify_mock_songs', JSON.stringify(realSongs));
+        }
+
+        // Fetch Real Albums
+        const realAlbums = await apiFetch('/api/music/albums/');
+        if (Array.isArray(realAlbums)) {
+          setAlbums(realAlbums);
+          localStorage.setItem('spotify_mock_albums', JSON.stringify(realAlbums));
+        }
+
+        // Fetch Real Playlists (Only if authenticated, as it requires a token)
+        if (storedCurrentUser) {
+          const realPlaylists = await apiFetch('/api/playlists/');
+          if (Array.isArray(realPlaylists)) {
+            setPlaylists(realPlaylists);
+            localStorage.setItem('spotify_mock_playlists', JSON.stringify(realPlaylists));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load data from Django:", error);
+      }
+    };
+
+    fetchRealData();
+    
+    // 3. Keep mock data for features we haven't wired up to Django yet (Support, Config, Notifications)
+    const storedNotifications = localStorage.getItem('spotify_mock_notifications');
+    if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
+    else setNotifications(DEFAULT_NOTIFICATIONS);
+
+    const storedTickets = localStorage.getItem('spotify_mock_tickets');
+    if (storedTickets) setTickets(JSON.parse(storedTickets));
+    else setTickets(DEFAULT_TICKETS);
+    
+    const storedConfig = localStorage.getItem('spotify_mock_config');
+    if (storedConfig) setConfig(JSON.parse(storedConfig));
+    else setConfig(DEFAULT_CONFIG);
+    
   }, []);
 
   // Sync state helpers to LocalStorage
@@ -565,161 +549,104 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.setItem(key, JSON.stringify(data));
   };
 
-  // 1. Auth Functions
-  const authenticateUser = (email: string, password: string): { success: boolean; message: string; user?: User } => {
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (!user) {
-      return { success: false, message: "No account found with this email address." };
+  // 1. Auth Functions (Connected to Django Backend)
+  const authenticateUser = async (email: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+    try {
+      const data = await apiFetch('/api/auth/login/', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      
+      const user = data.user;
+      user.token = data.token; // Save the Django Token
+      
+      setCurrentUser(user);
+      saveToStorage('spotify_mock_current_user', user);
+      
+      return { success: true, message: "Authentication successful.", user };
+    } catch (error: any) {
+      return { success: false, message: error.message || "Login failed. Please check your credentials." };
     }
-    const expectedPassword = user.password || "password"; // default "password" for preloaded users
-    if (expectedPassword !== password) {
-      return { success: false, message: "Incorrect password. Please try again." };
-    }
-    setCurrentUser(user);
-    saveToStorage('spotify_mock_current_user', user);
-    return { success: true, message: "Authentication successful.", user };
   };
 
-  const registerListener = (
-    name: string,
-    email: string,
-    password: string,
-    dob: string,
-    gender: string
-  ): { success: boolean; message: string; user?: User } => {
-    const storedUsersStr = localStorage.getItem('spotify_mock_users');
-    const currentUsersList: User[] = storedUsersStr ? JSON.parse(storedUsersStr) : users;
-
-    const emailExists = currentUsersList.some(u => u.email.toLowerCase() === email.toLowerCase());
-    if (emailExists) {
-      return { success: false, message: "An account with this email address already exists." };
+  const registerListener = async (
+    name: string, email: string, password: string, dob: string, gender: string
+  ): Promise<{ success: boolean; message: string; user?: User }> => {
+    try {
+      // FIX: Changed from /api/auth/register/ to /api/auth/register/listener/
+      const data = await apiFetch('/api/auth/register/listener/', {
+        method: 'POST',
+        body: JSON.stringify({
+          email,
+          password,
+          name,
+          role: 'listener',
+          dob,
+          gender
+        })
+      });
+      
+      const user = data.user;
+      user.token = data.token;
+      
+      setCurrentUser(user);
+      saveToStorage('spotify_mock_current_user', user);
+      
+      return { success: true, message: "Listener account registered successfully!", user };
+    } catch (error: any) {
+      return { success: false, message: error.message || "Registration failed." };
     }
-
-    const newUser: User = {
-      id: `usr-${Date.now()}`,
-      name,
-      email,
-      password,
-      role: 'listener',
-      tier: 'free',
-      avatarUrl: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80`,
-      followedArtists: [],
-      playlistsCount: 0,
-      joinedDate: new Date().toISOString().split('T')[0],
-      status: 'active',
-      dob,
-      gender
-    };
-
-    const updatedUsers = [...currentUsersList, newUser];
-    setUsers(updatedUsers);
-    saveToStorage('spotify_mock_users', updatedUsers);
-
-    // Auto log in
-    setCurrentUser(newUser);
-    saveToStorage('spotify_mock_current_user', newUser);
-
-    // Add notification
-    const welcomeNotif: Notification = {
-      id: `not-${Date.now()}`,
-      userId: newUser.id,
-      role: 'listener',
-      title: "Welcome to Spotify-Like Player!",
-      message: `Hi ${name}, your Free tier registration was successful. Explore your dashboard and curate playlists!`,
-      type: 'success',
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-    const updatedNotifs = [welcomeNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    saveToStorage('spotify_mock_notifications', updatedNotifs);
-
-    return { success: true, message: "Listener account registered successfully!", user: newUser };
   };
 
-  const registerArtist = (
-    stageName: string,
-    email: string,
-    password: string,
-    portfolioFiles?: any[]
-  ): { success: boolean; message: string; user?: User } => {
-    const storedUsersStr = localStorage.getItem('spotify_mock_users');
-    const currentUsersList: User[] = storedUsersStr ? JSON.parse(storedUsersStr) : users;
+  const registerArtist = async (
+    stageName: string, email: string, password: string, portfolioFiles?: File[]
+  ): Promise<{ success: boolean; message: string; user?: User }> => {
+    try {
+      const formData = new FormData();
+      formData.append('email', email);
+      formData.append('password', password);
+      formData.append('name', stageName);
+      formData.append('role', 'artist');
+      formData.append('stage_name', stageName);
+      
+      if (portfolioFiles && portfolioFiles.length > 0) {
+        portfolioFiles.forEach(file => {
+          formData.append('portfolio_files', file);
+        });
+      }
 
-    const emailExists = currentUsersList.some(u => u.email.toLowerCase() === email.toLowerCase());
-    if (emailExists) {
-      return { success: false, message: "An account with this email address already exists." };
+      // FIX: Changed from /api/auth/register/ to /api/auth/register/artist/
+      const data = await apiFetch('/api/auth/register/artist/', {
+        method: 'POST',
+        body: formData 
+      });
+      
+      const user = data.user;
+      user.token = data.token;
+      
+      setCurrentUser(user);
+      saveToStorage('spotify_mock_current_user', user);
+      
+      return { success: true, message: "Artist application submitted successfully. Your account is pending approval!", user };
+    } catch (error: any) {
+      return { success: false, message: error.message || "Registration failed." };
     }
-
-    const newUser: User = {
-      id: `usr-${Date.now()}`,
-      name: stageName,
-      email,
-      password,
-      role: 'artist',
-      tier: 'free',
-      avatarUrl: `https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&q=80`,
-      followedArtists: [],
-      playlistsCount: 0,
-      joinedDate: new Date().toISOString().split('T')[0],
-      status: 'pending'
-    };
-
-    const updatedUsers = [...currentUsersList, newUser];
-    setUsers(updatedUsers);
-    saveToStorage('spotify_mock_users', updatedUsers);
-
-    // Create a pending ArtistApplication so admins can approve/reject!
-    const newApp: ArtistApplication = {
-      id: `app-${Date.now()}`,
-      userId: newUser.id,
-      userName: stageName,
-      userEmail: email,
-      artistName: stageName,
-      bio: "Registered directly via Artist Sign-up Page. Portfolio uploaded successfully.",
-      genre: "Pending Classification",
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      portfolioFiles: portfolioFiles ? portfolioFiles.map((f: any) => typeof f === 'string' ? f : (f.name || 'demo_track.mp3')) : []
-    };
-
-    const updatedApps = [newApp, ...applications];
-    setApplications(updatedApps);
-    saveToStorage('spotify_mock_applications', updatedApps);
-
-    // Auto log in!
-    setCurrentUser(newUser);
-    saveToStorage('spotify_mock_current_user', newUser);
-
-    // Add notification to Admins
-    const adminNotif: Notification = {
-      id: `not-${Date.now()}`,
-      userId: 'all',
-      role: 'admin',
-      title: "New Artist Signup Pending Review",
-      message: `A new artist "${stageName}" has signed up directly and is pending profile approval.`,
-      type: 'info',
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-    const updatedNotifs = [adminNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    saveToStorage('spotify_mock_notifications', updatedNotifs);
-
-    return { success: true, message: "Artist application submitted successfully. Your account is pending approval!", user: newUser };
   };
 
-  const logout = () => {
+  const logout = async (): Promise<void> => {
+    try {
+      await apiFetch('/api/auth/logout/', { method: 'POST' });
+    } catch (error) {
+      console.warn("Server logout failed, clearing local state anyway.");
+    }
     setCurrentUser(null);
     localStorage.removeItem('spotify_mock_current_user');
   };
 
   const switchUser = (userId: string) => {
-    const user = users.find(u => u.id === userId);
-    if (user) {
-      setCurrentUser(user);
-      saveToStorage('spotify_mock_current_user', user);
-    }
+    // Note: Mock switching breaks real JWT/Token auth. 
+    // If a user clicks the dev switcher, we force a logout so they can log in properly.
+    logout();
   };
 
   // 2. Subscription / Pricing Operations
@@ -1244,122 +1171,104 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     saveToStorage('spotify_mock_current_user', updatedCurrent);
   };
 
-  // 8. Stream metrics & Artist uploading
-  const uploadSong = (
+  // 8. Stream metrics & Artist uploading (Connected to Django Backend)
+  const uploadSong = async (
     title: string, 
     albumName: string, 
     duration: number, 
     lyrics: string, 
-    coverUrl?: string,
-    extra?: {
-      releaseType?: 'single' | 'album';
-      genre?: string;
-      releaseYear?: string;
-      collaborators?: string;
-      audioFileName?: string;
-      coverArtFileName?: string;
-    }
-  ) => {
-    if (!currentUser || currentUser.role !== 'artist') return;
+    coverUrl?: string, // legacy mock parameter
+    extra?: any
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      if (!currentUser || currentUser.role !== 'artist') throw new Error("Unauthorized.");
 
-    // Find if album already exists or create Virtual Album ID
-    let album = albums.find(a => a.title.toLowerCase() === albumName.toLowerCase() && a.artistId === currentUser.id);
-    let albumId = album?.id || `alb-${Date.now()}`;
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('album_name', albumName);
+      formData.append('duration', duration.toString());
+      if (lyrics) formData.append('lyrics', lyrics);
+      if (extra?.genre) formData.append('genre', extra.genre);
+      if (extra?.releaseYear) formData.append('release_year', extra.releaseYear.toString());
+      if (extra?.releaseType) formData.append('release_type', extra.releaseType);
+      if (extra?.collaborators) formData.append('collaborators', extra.collaborators);
+      
+      // Attach real files
+      if (extra?.audioFile) {
+        formData.append('audio_file', extra.audioFile);
+      } else {
+         return { success: false, message: "Real audio file is required." };
+      }
+      if (extra?.coverFile) {
+        formData.append('cover_image', extra.coverFile);
+      }
 
-    const newSong: Song = {
-      id: `sng-${Date.now()}`,
-      title,
-      artistId: currentUser.id,
-      artistName: currentUser.name,
-      albumId,
-      albumName,
-      duration,
-      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3", // fallback
-      coverUrl: coverUrl || COVERS.pop,
-      lyrics: lyrics || "[No Lyrics Provided]",
-      streams: 0,
-      releaseDate: new Date().toISOString().split('T')[0],
-      approved: true, // Auto-approved in mock system for smooth experience, can be simulated!
-      releaseType: extra?.releaseType || 'single',
-      genre: extra?.genre || 'Pop',
-      releaseYear: extra?.releaseYear || new Date().getFullYear().toString(),
-      collaborators: extra?.collaborators || '',
-      audioFileName: extra?.audioFileName || 'uploaded_track.mp3',
-      coverArtFileName: extra?.coverArtFileName || 'uploaded_cover.png'
-    };
-
-    const updatedSongs = [...songs, newSong];
-    setSongs(updatedSongs);
-    saveToStorage('spotify_mock_songs', updatedSongs);
-
-    if (!album) {
-      const newAlbum: Album = {
-        id: albumId,
-        title: albumName,
-        artistId: currentUser.id,
-        artistName: currentUser.name,
-        coverUrl: coverUrl || COVERS.pop,
-        releaseDate: new Date().toISOString().split('T')[0],
-        songIds: [newSong.id]
-      };
-      const updatedAlbums = [...albums, newAlbum];
-      setAlbums(updatedAlbums);
-      saveToStorage('spotify_mock_albums', updatedAlbums);
-    } else {
-      const updatedAlbums = albums.map(a => {
-        if (a.id === albumId) {
-          return { ...a, songIds: [...a.songIds, newSong.id] };
-        }
-        return a;
+      const newSong = await apiFetch('/api/music/songs/', {
+        method: 'POST',
+        body: formData // Let the browser set Content-Type for FormData
       });
-      setAlbums(updatedAlbums);
-      saveToStorage('spotify_mock_albums', updatedAlbums);
+
+      const updatedSongs = [...songs, newSong];
+      setSongs(updatedSongs);
+      saveToStorage('spotify_mock_songs', updatedSongs);
+
+      // Refresh albums because the Django backend auto-generates the album relationship
+      const realAlbums = await apiFetch('/api/music/albums/');
+      setAlbums(realAlbums);
+      saveToStorage('spotify_mock_albums', realAlbums);
+
+      return { success: true, message: "Track published successfully!" };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Failed to upload song." };
     }
-
-    // Notify artist
-    const successNotif: Notification = {
-      id: `not-${Date.now()}`,
-      userId: currentUser.id,
-      role: 'artist',
-      title: 'Track Uploaded Successfully',
-      message: `Your track "${title}" is now live and ready for streaming on the platform.`,
-      type: 'success',
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-    const updatedNotifs = [successNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    saveToStorage('spotify_mock_notifications', updatedNotifs);
   };
 
-  const updateSong = (songId: string, updates: Partial<Song>) => {
-    const updatedSongs = songs.map(s => {
-      if (s.id === songId) {
-        return { ...s, ...updates };
-      }
-      return s;
-    });
-    setSongs(updatedSongs);
-    saveToStorage('spotify_mock_songs', updatedSongs);
+  const updateSong = async (songId: string | number, updates: Partial<Song>): Promise<{ success: boolean; message: string }> => {
+    try {
+      // Map frontend camelCase to backend snake_case
+      const payload: any = {};
+      if (updates.title) payload.title = updates.title;
+      if (updates.albumName) payload.album_name = updates.albumName;
+      if (updates.lyrics !== undefined) payload.lyrics = updates.lyrics;
+      if (updates.genre) payload.genre = updates.genre;
+      if (updates.releaseYear) payload.release_year = updates.releaseYear;
+      if (updates.releaseType) payload.release_type = updates.releaseType;
+      if (updates.collaborators !== undefined) payload.collaborators = updates.collaborators;
+
+      const updatedSong = await apiFetch(`/api/music/songs/${songId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+
+      const updatedSongs = songs.map(s => s.id === songId ? updatedSong : s);
+      setSongs(updatedSongs);
+      saveToStorage('spotify_mock_songs', updatedSongs);
+
+      return { success: true, message: "Song updated successfully." };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Failed to update song." };
+    }
   };
 
-  const deleteSong = (songId: string) => {
-    const songToDelete = songs.find(s => s.id === songId);
-    if (!songToDelete) return;
+  const deleteSong = async (songId: string | number): Promise<{ success: boolean; message: string }> => {
+    try {
+      await apiFetch(`/api/music/songs/${songId}/`, {
+        method: 'DELETE'
+      });
 
-    const updatedSongs = songs.filter(s => s.id !== songId);
-    setSongs(updatedSongs);
-    saveToStorage('spotify_mock_songs', updatedSongs);
+      const updatedSongs = songs.filter(s => s.id !== songId);
+      setSongs(updatedSongs);
+      saveToStorage('spotify_mock_songs', updatedSongs);
 
-    const updatedAlbums = albums.map(a => {
-      if (a.id === songToDelete.albumId) {
-        return { ...a, songIds: a.songIds.filter(id => id !== songId) };
-      }
-      return a;
-    }).filter(a => a.songIds.length > 0);
+      // Refresh albums in case an empty album was auto-deleted by our Django signal
+      const realAlbums = await apiFetch('/api/music/albums/');
+      setAlbums(realAlbums);
+      saveToStorage('spotify_mock_albums', realAlbums);
 
-    setAlbums(updatedAlbums);
-    saveToStorage('spotify_mock_albums', updatedAlbums);
+      return { success: true, message: "Song deleted successfully." };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Failed to delete song." };
+    }
   };
 
   const adminPublishSong = (title: string, artistId: string, artistName: string, albumName: string, duration: number, lyrics: string, coverUrl?: string) => {
