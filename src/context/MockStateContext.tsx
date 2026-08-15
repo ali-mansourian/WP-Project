@@ -478,7 +478,17 @@ interface MockStateContextProps {
 const MockStateContext = createContext<MockStateContextProps | undefined>(undefined);
 
 export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+  const stored = localStorage.getItem('spotify_mock_current_user');
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+});
   const [users, setUsers] = useState<User[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);

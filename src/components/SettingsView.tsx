@@ -412,13 +412,20 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {/* Core Submit Button */}
-          <button
-            type="submit"
-            className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-extrabold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-500/10 flex items-center justify-center gap-2"
-          >
-            <Check className="w-4 h-4" />
-            <span>Apply preferences</span>
-          </button>
+            <div className="space-y-2">
+            <button
+              type="submit"
+              className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-extrabold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-500/10 flex items-center justify-center gap-2"
+            >
+              <Check className="w-4 h-4" />
+              <span>Apply preferences</span>
+            </button>
+            {saveSettingsSuccess && (
+              <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-900/40 text-emerald-400 text-[10px] font-semibold text-center animate-in fade-in">
+                {saveSettingsSuccess}
+            </div>
+            )}
+          </div>
 
           {/* Safety Account Deletion Box */}
           <div className="bg-[#121214] border border-red-950/20 p-6 rounded-2xl shadow-xl space-y-4">
