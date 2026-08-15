@@ -1,4 +1,6 @@
-import React, { useState, useRef } from 'react';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { apiFetch } from '../api';
 import { useMockState } from '../context/MockStateContext';
 import { Song } from '../types';
 import { 
@@ -61,7 +63,17 @@ export const ArtistDashboard: React.FC = () => {
 
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  
+  const [realStats, setRealStats] = useState<{ total_streams: number; unique_listeners: number } | null>(null);
 
+    // Fetch real stats from Django when an active artist logs in
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'artist' && currentUser.status === 'active') {
+      apiFetch('/api/analytics/artist/stats/')
+        .then(data => setRealStats(data))
+        .catch(err => console.warn("Could not fetch artist stats:", err));
+    }
+  }, [currentUser]);
   if (!currentUser || currentUser.role !== 'artist') {
     return (
       <div className="bg-rose-950/20 border border-rose-900/30 p-8 rounded-2xl text-center max-w-lg mx-auto my-12 shadow-2xl">
@@ -96,10 +108,10 @@ export const ArtistDashboard: React.FC = () => {
   const artistSongs = songs.filter(s => s.artistId === currentUser.id);
 
   const totalTracks = artistSongs.length;
-  const totalStreams = artistSongs.reduce((acc, s) => acc + s.streams, 0);
-  const totalListeners = Math.round(totalStreams * 0.74) + (totalTracks * 12);
+  
+  const totalStreams = realStats?.total_streams ?? artistSongs.reduce((acc, s) => acc + s.streams, 0);
+  const totalListeners = realStats?.unique_listeners ?? Math.round(totalStreams * 0.74) + (totalTracks * 12);
   const totalEarnings = Number((totalStreams * config.metrics.averagePayoutPerStream).toFixed(2));
-
   // --- AUDIO FILE HANDLERS ---
   const handleAudioDrag = (e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation();
