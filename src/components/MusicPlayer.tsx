@@ -85,8 +85,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   }, [songs]);
 
   const getStreamLimit = (tier: string) => {
-    if (tier === 'free') return 6;
-    if (tier === 'silver') return 60;
+    if (tier === 'free') return 60;
+    if (tier === 'silver') return 100;
     return Infinity;
   };
 
@@ -316,11 +316,30 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
   // Increment Streams count
   useEffect(() => {
-    if (isPlaying && currentTrack && currentTime > 10 && !streamLogged) {
-      incrementSongStreams(currentTrack.id);
-      setStreamLogged(true);
-    }
-  }, [isPlaying, currentTrack, currentTime, streamLogged, incrementSongStreams]);
+    let isMounted = true;
+
+    const logStream = async () => {
+      if (isPlaying && currentTrack && currentTime > 10 && !streamLogged) {
+        setStreamLogged(true); // Set immediately to prevent multiple calls
+        
+        const result = await incrementSongStreams(currentTrack.id);
+        
+        if (isMounted) {
+          if (!result.success && result.message === 'limit_reached') {
+            setShowStreamLimitAlert(true);
+            setIsPlaying(false);
+            if (audioRef.current) audioRef.current.pause();
+          }
+        }
+      }
+    };
+    
+    logStream();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isPlaying, currentTrack, currentTime, streamLogged, incrementSongStreams, setIsPlaying]);
 
   if (!currentUser) return null;
 

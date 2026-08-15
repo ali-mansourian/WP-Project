@@ -470,7 +470,7 @@ interface MockStateContextProps {
   updateSong: (songId: string | number, updates: Partial<Song>) => Promise<{ success: boolean; message: string }>;
   deleteSong: (songId: string | number) => Promise<{ success: boolean; message: string }>;
   adminPublishSong: (title: string, artistId: string, artistName: string, albumName: string, duration: number, lyrics: string, coverUrl?: string) => void;
-  incrementSongStreams: (songId: string) => void;
+  incrementSongStreams: (songId: string | number, listenedSeconds?: number, durationSeconds?: number) => void;
 }
 
 const MockStateContext = createContext<MockStateContextProps | undefined>(undefined);
@@ -1450,60 +1450,39 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     saveToStorage('spotify_mock_notifications', updatedNotifs);
   };
 
-  const incrementSongStreams = (songId: string) => {
+  const incrementSongStreams = (songId: string | number, listenedSeconds: number = 10, durationSeconds: number = 0) => {
     if (!currentUser) return;
 
-    const currentDailyCount = currentUser.dailyStreamsCount || 0;
-
-    if (currentUser.role === 'listener') {
-      if (currentUser.tier === 'free' && currentDailyCount >= 6) {
-        alert("Daily stream limit reached: Free tier accounts are limited to 6 streams per day.");
-        return;
+    // Fire and forget the tracking event to the Django backend
+    apiFetch('/api/tracking/plays/', {
+      method: 'POST',
+      body: JSON.stringify({
+        song: songId,
+        listened_seconds: Math.floor(listenedSeconds),
+        song_duration_seconds: Math.floor(durationSeconds),
+        completed: listenedSeconds >= durationSeconds && durationSeconds > 0
+      })
+    }).then(data => {
+      // If the backend returns the updated song with new streams, update local state
+      if (data && data.song_details) {
+        const updatedSongs = songs.map(s => 
+          String(s.id) === String(songId) ? normalizeApiSong(data.song_details) : s
+        );
+        setSongs(updatedSongs);
+        saveToStorage('spotify_mock_songs', updatedSongs);
       }
-      if (currentUser.tier === 'silver' && currentDailyCount >= 60) {
-        alert("Daily stream limit reached: Silver tier accounts are limited to 60 streams per day.");
-        return;
-      }
-    }
-
-    const updatedSongs = songs.map(s => {
-      if (s.id === songId) {
-        return { ...s, streams: s.streams + 1 };
-      }
-      return s;
+    }).catch(err => {
+      // If it fails (e.g. daily limit reached), the backend returns 403.
+      console.warn("Stream tracking failed:", err.message);
     });
-    setSongs(updatedSongs);
-    saveToStorage('spotify_mock_songs', updatedSongs);
 
+    // Optimistically update local stream count for UI responsiveness
     const updatedCurrentUser = {
       ...currentUser,
-      dailyStreamsCount: currentDailyCount + 1
+      dailyStreamsCount: (currentUser.dailyStreamsCount || 0) + 1
     };
     setCurrentUser(updatedCurrentUser);
     saveToStorage('spotify_mock_current_user', updatedCurrentUser);
-
-    const updatedUsers = users.map(u => {
-      if (u.id === currentUser.id) {
-        return updatedCurrentUser;
-      }
-      return u;
-    });
-    setUsers(updatedUsers);
-    saveToStorage('spotify_mock_users', updatedUsers);
-
-    const payoutInc = config.metrics.averagePayoutPerStream;
-    const revenueInc = payoutInc / config.metrics.artistPayoutRate;
-
-    const updatedConfig = {
-      ...config,
-      metrics: {
-        ...config.metrics,
-        totalStreams: config.metrics.totalStreams + 1,
-        totalRevenue: Number((config.metrics.totalRevenue + revenueInc).toFixed(4))
-      }
-    };
-    setConfig(updatedConfig);
-    saveToStorage('spotify_mock_config', updatedConfig);
   };
 
   return (
