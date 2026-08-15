@@ -8,6 +8,8 @@ from .serializers import AdminUserSerializer
 from rest_framework import permissions, status, viewsets
 from .models import User
 from rest_framework.views import APIView
+from .models import UserPreferences
+from .serializers import UserPreferencesSerializer
 
 
 from .serializers import (
@@ -111,7 +113,24 @@ class MeView(APIView):
             {'detail': 'Account deleted successfully.'},
             status=status.HTTP_200_OK,
         )
+class UserPreferencesView(APIView):
+    """
+    Get or update the authenticated user's app preferences.
+    Automatically creates preferences with defaults if they don't exist yet.
+    """
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get(self, request):
+        preferences, _ = UserPreferences.objects.get_or_create(user=request.user)
+        serializer = UserPreferencesSerializer(preferences)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        preferences, _ = UserPreferences.objects.get_or_create(user=request.user)
+        serializer = UserPreferencesSerializer(preferences, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class LogoutView(APIView):
     """

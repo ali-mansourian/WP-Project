@@ -92,3 +92,21 @@ class AdminUserSerializer(serializers.ModelSerializer):
             'stage_name', 'joined_date'
         ]
         read_only_fields = ['id', 'joined_date']
+        
+from .models import UserPreferences
+
+class UserPreferencesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserPreferences
+        fields = [
+            'stream_quality',
+            'app_volume',
+            'hardware_acceleration',
+            'auto_lyrics_scroll',
+            'language',
+            'notif_releases',
+            'notif_playlists',
+            'notif_system',
+            'updated_at',
+        ]
+        read_only_fields = ['updated_at']

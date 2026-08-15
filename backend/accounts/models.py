@@ -89,3 +89,26 @@ class User(AbstractUser):
     @property
     def display_name(self):
         return self.name or self.stage_name or self.email
+class UserPreferences(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='app_preferences',
+    )
+    
+    stream_quality = models.CharField(
+        max_length=20,
+        choices=[('standard', 'Standard'), ('hi-fi', 'High Fidelity'), ('spatial', 'Lossless Spatial')],
+        default='standard',
+    )
+    app_volume = models.IntegerField(default=80)
+    hardware_acceleration = models.BooleanField(default=True)
+    auto_lyrics_scroll = models.BooleanField(default=True)
+    language = models.CharField(max_length=10, default='en-US')
+    notif_releases = models.BooleanField(default=True)
+    notif_playlists = models.BooleanField(default=True)
+    notif_system = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Preferences for {self.user.email}"

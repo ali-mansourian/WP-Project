@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 import { useMockState } from '../context/MockStateContext';
 import { useNavigate } from 'react-router-dom';
+
 import { 
   Settings, 
   Volume2, 
@@ -43,15 +46,58 @@ export const SettingsView: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [deleteError, setDeleteError] = useState('');
+  const [isLoadingPrefs, setIsLoadingPrefs] = useState(true);
+
+    // Load saved preferences from backend on mount
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const prefs = await apiFetch('/api/auth/me/preferences/');
+        if (prefs) {
+          setStreamQuality(prefs.stream_quality || 'standard');
+          setAppVolume(prefs.app_volume ?? 80);
+          setLanguage(prefs.language || 'en-US');
+          setNotifReleases(prefs.notif_releases ?? true);
+          setNotifPlaylists(prefs.notif_playlists ?? true);
+          setNotifSystemAlerts(prefs.notif_system ?? false);
+          setHardwareAcceleration(prefs.hardware_acceleration ?? true);
+          setAutoLyricsScroll(prefs.auto_lyrics_scroll ?? true);
+        }
+      } catch (err) {
+        console.warn('Could not load preferences:', err);
+      } finally {
+        setIsLoadingPrefs(false);
+      }
+    };
+    loadPreferences();
+  }, []);
 
   if (!currentUser) return null;
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaveSettingsSuccess('Your app preferences have been successfully updated in this session!');
-    setTimeout(() => {
-      setSaveSettingsSuccess('');
-    }, 3000);
+    
+    try {
+      await apiFetch('/api/auth/me/preferences/', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          stream_quality: streamQuality,
+          app_volume: appVolume,
+          language: language,
+          notif_releases: notifReleases,
+          notif_playlists: notifPlaylists,
+          notif_system: notifSystemAlerts,
+          hardware_acceleration: hardwareAcceleration,
+          auto_lyrics_scroll: autoLyricsScroll,
+        }),
+      });
+      
+      setSaveSettingsSuccess('Your preferences have been saved and synced to your account!');
+      setTimeout(() => setSaveSettingsSuccess(''), 3000);
+    } catch (err: any) {
+      setSaveSettingsSuccess('Failed to save preferences. Please try again.');
+      setTimeout(() => setSaveSettingsSuccess(''), 3000);
+    }
   };
 
   const handleConfirmDelete = async () => {

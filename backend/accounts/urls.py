@@ -1,4 +1,5 @@
 from django.urls import path
+
 from .views import (
     AdminArtistViewSet,
     AdminUserListView,
@@ -7,6 +8,7 @@ from .views import (
     MeView,
     RegisterArtistView,
     RegisterListenerView,
+    UserPreferencesView,
 )
 
 app_name = 'accounts'
@@ -25,4 +27,6 @@ urlpatterns = [
     
     # Admin User Management
     path('admin/users/', AdminUserListView.as_view(), name='admin-user-list'),
+        # User Preferences
+    path('me/preferences/', UserPreferencesView.as_view(), name='user-preferences'),
 ]
