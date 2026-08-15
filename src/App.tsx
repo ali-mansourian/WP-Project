@@ -32,6 +32,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Song, Notification } from './types';
+import { PaymentVerify } from './components/PaymentVerify';
 
 function PendingArtistScreen() {
   const { currentUser, logout, resetRejectedArtistToListener } = useMockState();
@@ -291,6 +292,7 @@ function MainAppContent() {
           <Route path="albums" element={<AlbumsView />} />
           <Route path="notifications" element={<NotificationsView />} />
           <Route path="search" element={<SearchView />} />
+          <Route path="/payment/verify" element={<PaymentVerify />} />
           
           {/* Workspaces */}
           <Route path="support-center" element={<WorkspacesViewWrapper viewName="support-center" />} />

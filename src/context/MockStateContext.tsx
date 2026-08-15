@@ -425,8 +425,8 @@ interface MockStateContextProps {
   switchUser: (userId: string) => void;
   
   // Subscription / Tier Operations
-  upgradeTier: (userId: string, tier: ListenerTier) => void;
-  updatePrices: (silver: number, gold: number) => void;
+  initiateSubscriptionPurchase: (tier: 'silver' | 'gold') => Promise<void>;
+  updatePrices: (silver: number, gold: number) => Promise<{ success: boolean; message: string }>;
   
   // Playlist Operations (Tier Restricted)
   createPlaylist: (name: string, description: string, isPublic?: boolean) => Promise<{ success: boolean; message: string }>;
@@ -571,6 +571,26 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } catch (error) {
         console.warn('Could not load notifications:', error);
         setNotifications([]);
+      }
+
+            // Fetch Real Subscription Plans to sync prices
+      try {
+        const plans = await apiFetch('/api/subscriptions/plans/');
+        if (Array.isArray(plans)) {
+          const silverPlan = plans.find((p: any) => p.tier === 'silver');
+          const goldPlan = plans.find((p: any) => p.tier === 'gold');
+          if (silverPlan && goldPlan) {
+            const updatedConfig = {
+              ...config,
+              silverPrice: Number(silverPlan.price),
+              goldPrice: Number(goldPlan.price)
+            };
+            setConfig(updatedConfig);
+            saveToStorage('spotify_mock_config', updatedConfig);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch subscription plans:", err);
       }
 
       // 5. Fetch Real Support Tickets
@@ -894,76 +914,85 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // 2. Subscription / Pricing Operations
-  const upgradeTier = (userId: string, tier: ListenerTier) => {
-    const updatedUsers = users.map(u => {
-      if (u.id === userId) {
-        return { ...u, tier };
+    // 2. Subscription / Pricing Operations (Connected to Django & Zarinpal)
+  const initiateSubscriptionPurchase = async (tier: 'silver' | 'gold'): Promise<void> => {
+    try {
+      // 1. Fetch active plans to get the correct database ID
+      const plans = await apiFetch('/api/subscriptions/plans/');
+      const targetPlan = plans.find((p: any) => p.tier === tier && p.is_active);
+
+      if (!targetPlan) {
+        alert(`${tier.toUpperCase()} plan is currently unavailable.`);
+        return;
       }
-      return u;
-    });
-    setUsers(updatedUsers);
-    saveToStorage('spotify_mock_users', updatedUsers);
 
-    if (currentUser && currentUser.id === userId) {
-      const updatedCurrent = { ...currentUser, tier };
-      setCurrentUser(updatedCurrent);
-      saveToStorage('spotify_mock_current_user', updatedCurrent);
+      // 2. Request payment URL from Django (which calls Zarinpal)
+      const res = await apiFetch('/api/subscriptions/purchase/', {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: targetPlan.id })
+      });
+
+      if (res.payment_url) {
+        // 3. Save plan ID for the callback verification page
+        localStorage.setItem('pending_subscription_plan_id', targetPlan.id.toString());
+        
+        // 4. Redirect user to Zarinpal Sandbox
+        window.location.href = res.payment_url;
+      } else {
+        alert(res.error || "Failed to initialize payment gateway.");
+      }
+    } catch (err: any) {
+      console.error("Payment initiation failed:", err);
+      alert(err.message || "An error occurred while connecting to the payment gateway.");
     }
+  };
 
-    // Dynamic Financial Metric Calculations
-    // Upgrades bring in revenue! Silver adds $4.99, Gold adds $9.99
-    const price = tier === 'silver' ? config.silverPrice : tier === 'gold' ? config.goldPrice : 0;
-    if (price > 0) {
+  const updatePrices = async (silver: number, gold: number): Promise<{ success: boolean; message: string }> => {
+    try {
+      const plans = await apiFetch('/api/subscriptions/plans/');
+      const silverPlan = plans.find((p: any) => p.tier === 'silver');
+      const goldPlan = plans.find((p: any) => p.tier === 'gold');
+
+      if (silverPlan) {
+        await apiFetch(`/api/subscriptions/plans/${silverPlan.id}/`, {
+          method: 'PATCH',
+          body: JSON.stringify({ price: silver })
+        });
+      }
+      if (goldPlan) {
+        await apiFetch(`/api/subscriptions/plans/${goldPlan.id}/`, {
+          method: 'PATCH',
+          body: JSON.stringify({ price: gold })
+        });
+      }
+
       const updatedConfig = {
         ...config,
-        metrics: {
-          ...config.metrics,
-          totalRevenue: Number((config.metrics.totalRevenue + price).toFixed(2))
-        }
+        silverPrice: Number(silver.toFixed(2)),
+        goldPrice: Number(gold.toFixed(2))
       };
       setConfig(updatedConfig);
       saveToStorage('spotify_mock_config', updatedConfig);
+
+      // Keep the mock notification for UI feedback
+      const systemNotif: Notification = {
+        id: `not-${Date.now()}`,
+        userId: 'all',
+        role: 'listener',
+        title: 'Subscription Pricing Update',
+        message: `We have updated our premium rates: Silver plan is now $${silver}/mo, and Gold is $${gold}/mo.`,
+        type: 'info',
+        read: false,
+        createdAt: new Date().toISOString()
+      };
+      const updatedNotifs = [systemNotif, ...notifications];
+      setNotifications(updatedNotifs);
+      saveToStorage('spotify_mock_notifications', updatedNotifs);
+
+      return { success: true, message: 'Subscription plans pricing updated and broadcasted to platform listeners!' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to update prices.' };
     }
-
-    // Send a success notification
-    const newNotif: Notification = {
-      id: `not-${Date.now()}`,
-      userId,
-      role: 'listener',
-      title: `Welcome to ${tier.toUpperCase()} Tier!`,
-      message: `Your account was successfully upgraded to ${tier}. Enjoy your premium audio fidelity and extended features!`,
-      type: 'success',
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-    const updatedNotifs = [newNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    saveToStorage('spotify_mock_notifications', updatedNotifs);
-  };
-
-  const updatePrices = (silver: number, gold: number) => {
-    const updatedConfig = {
-      ...config,
-      silverPrice: Number(silver.toFixed(2)),
-      goldPrice: Number(gold.toFixed(2))
-    };
-    setConfig(updatedConfig);
-    saveToStorage('spotify_mock_config', updatedConfig);
-
-    // Send a system-wide notification to listeners
-    const systemNotif: Notification = {
-      id: `not-${Date.now()}`,
-      userId: 'all',
-      role: 'listener',
-      title: 'Subscription Pricing Update',
-      message: `We have updated our premium rates: Silver plan is now $${silver}/mo, and Gold is $${gold}/mo. Premium listeners continue to enjoy ad-free tracks!`,
-      type: 'info',
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-    const updatedNotifs = [systemNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    saveToStorage('spotify_mock_notifications', updatedNotifs);
   };
 
   // 3. Playlist Operations with Tier Enforcement
@@ -1603,7 +1632,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   return (
-    <MockStateContext.Provider value={{
+      <MockStateContext.Provider value={{
       currentUser,
       users,
       songs,
@@ -1618,7 +1647,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       registerArtist,
       logout,
       switchUser,
-      upgradeTier,
+      initiateSubscriptionPurchase,
       updatePrices,
       createPlaylist,
       deletePlaylist,

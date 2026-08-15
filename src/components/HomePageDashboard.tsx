@@ -67,7 +67,7 @@ export const HomePageDashboard: React.FC = () => {
         </div>
         {currentUser.tier !== 'gold' && (
           <button
-            onClick={() => navigate('/profile')}
+            onClick={() => initiateSubscriptionPurchase('gold')}
             className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black text-xs font-extrabold rounded-lg transition-all transform hover:-translate-y-0.5 cursor-pointer flex items-center gap-2 shadow-lg shadow-emerald-500/20"
           >
             <Sparkles className="w-4 h-4 fill-black" />

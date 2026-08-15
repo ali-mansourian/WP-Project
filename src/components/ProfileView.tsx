@@ -23,9 +23,9 @@ import { ListenerTier } from '../types';
 import './ProfileSettings.css';
 
 export const ProfileView: React.FC = () => {
-  const { 
+    const { 
     currentUser, 
-    upgradeTier, 
+    initiateSubscriptionPurchase, 
     updateProfile, 
     playlists, 
     songs, 
@@ -69,10 +69,13 @@ export const ProfileView: React.FC = () => {
 
   if (!currentUser) return null;
 
-  const handleUpgrade = (tier: ListenerTier) => {
-    upgradeTier(currentUser.id, tier);
-    setSuccessMessage(`Subscription plan updated to ${tier.toUpperCase()}!`);
-    setTimeout(() => setSuccessMessage(''), 3000);
+  const handleUpgrade = async (tier: ListenerTier) => {
+    if (tier === 'free') {
+      setSuccessMessage('To downgrade to Free, please wait for your current subscription to expire.');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      return;
+    }
+    await initiateSubscriptionPurchase(tier as 'silver' | 'gold');
   };
 
   // Open Edit Modal with current values
@@ -662,7 +665,7 @@ export const ProfileView: React.FC = () => {
                   </p>
                 </div>
                 <button
-                  onClick={() => upgradeTier(currentUser.id, 'gold')}
+                  onClick={() => initiateSubscriptionPurchase('gold')}
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-extrabold rounded-lg uppercase shadow-lg shadow-amber-500/10 transition cursor-pointer"
                 >
                   Upgrade to Gold to Unlock

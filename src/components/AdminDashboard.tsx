@@ -228,7 +228,7 @@ export const AdminDashboard: React.FC = () => {
     setSettledArtists(updatedSettled);
   };
 
-  const handlePriceSave = (e: React.FormEvent) => {
+  const handlePriceSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setConfigSuccess('');
     setConfigError('');
@@ -246,11 +246,14 @@ export const AdminDashboard: React.FC = () => {
       return;
     }
 
-    updatePrices(silverVal, goldVal);
-    setConfigSuccess('Subscription plans pricing updated and broadcasted to platform listeners!');
-    setTimeout(() => setConfigSuccess(''), 4000);
+    const result = await updatePrices(silverVal, goldVal);
+    if (result.success) {
+      setConfigSuccess(result.message);
+      setTimeout(() => setConfigSuccess(''), 4000);
+    } else {
+      setConfigError(result.message);
+    }
   };
-
   // SVGs pie calculation helper
   const renderPieChart = () => {
     const radius = 60;
