@@ -7,6 +7,7 @@ from notifications.models import Notification
 from .serializers import AdminUserSerializer
 from rest_framework import permissions, status, viewsets
 from .models import User
+from rest_framework.views import APIView
 
 
 from .serializers import (
@@ -175,4 +176,30 @@ class AdminArtistViewSet(viewsets.ModelViewSet):
         )
         
         serializer = self.get_serializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+class IsAdminRoleOrStaff(permissions.BasePermission):
+    """
+    Allows access only to admin users or Django staff.
+    """
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and (
+                request.user.is_staff
+                or request.user.role == 'admin'
+            )
+        )
+
+
+class AdminUserListView(APIView):
+    """
+    Returns all users for the Admin Dashboard.
+    Endpoint: GET /api/auth/admin/users/
+    """
+    permission_classes = [IsAdminRoleOrStaff]
+
+    def get(self, request):
+        users = User.objects.all().order_by('-joined_date')
+        serializer = AdminUserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

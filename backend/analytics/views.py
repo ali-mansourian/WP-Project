@@ -83,14 +83,28 @@ class AdminPlatformStatsView(APIView):
         now = timezone.now()
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         
-        # Calculate total earnings for the current month
-        earnings = Payment.objects.filter(
+        # Total revenue (all completed subscription purchases, all time)
+        total_revenue = Payment.objects.filter(
+            status=Payment.Status.COMPLETED,
+            type=Payment.Type.SUBSCRIPTION_PURCHASE,
+        ).aggregate(total=Sum('amount'))['total'] or 0.00
+        
+        # Current month earnings
+        monthly_earnings = Payment.objects.filter(
             status=Payment.Status.COMPLETED,
             type=Payment.Type.SUBSCRIPTION_PURCHASE,
             created_at__gte=start_of_month
         ).aggregate(total=Sum('amount'))['total'] or 0.00
         
-        # Calculate user base distribution across tiers for the pie chart
+        # Total streams
+        total_streams = SongPlay.objects.count()
+        
+        # User counts by role
+        role_counts = {}
+        for role_data in User.objects.values('role').annotate(count=Count('id')):
+            role_counts[role_data['role']] = role_data['count']
+        
+        # Tier distribution for listeners (for the pie chart)
         tier_distribution = list(
             User.objects.filter(role='listener')
             .values('tier')
@@ -98,8 +112,14 @@ class AdminPlatformStatsView(APIView):
         )
         
         return Response({
-            'current_month_earnings': earnings,
-            'tier_distribution': tier_distribution
+            'total_revenue': total_revenue,
+            'current_month_earnings': monthly_earnings,
+            'total_streams': total_streams,
+            'role_counts': role_counts,
+            'tier_distribution': tier_distribution,
+            'total_users': User.objects.count(),
+            'total_active_artists': User.objects.filter(role='artist', status='active').count(),
+            'total_pending_artists': User.objects.filter(role='artist', status='pending').count(),
         }, status=status.HTTP_200_OK)
 
 

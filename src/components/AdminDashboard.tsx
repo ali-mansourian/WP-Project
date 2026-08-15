@@ -39,7 +39,8 @@ export const AdminDashboard: React.FC = () => {
     replyToSupportTicket,
     updateTicketStatus,
     adminPublishSong,
-    notifications
+    notifications,
+    adminStats
   } = useMockState();
 
   // Tab Navigation State
@@ -87,10 +88,10 @@ export const AdminDashboard: React.FC = () => {
   // Calculations for Stats
   const pendingApps = applications.filter(a => a.status === 'pending');
   const openTickets = tickets.filter(t => t.status !== 'resolved');
-  const totalStreamsCount = songs.reduce((acc, s) => acc + s.streams, 0);
+  
+  const totalStreamsCount = adminStats?.total_streams ?? songs.reduce((acc, s) => acc + s.streams, 0);
   const totalArtistPayouts = Number((totalStreamsCount * config.metrics.averagePayoutPerStream).toFixed(2));
-  const platformNetIncome = Number((config.metrics.totalRevenue - totalArtistPayouts).toFixed(2));
-
+  const platformNetIncome = Number(((adminStats?.total_revenue ?? config.metrics.totalRevenue) - totalArtistPayouts).toFixed(2));
   // Pie chart variables
   const listenerUsers = users.filter(u => u.role === 'listener');
   const freeCount = listenerUsers.filter(u => u.tier === 'free').length;
@@ -811,7 +812,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="payout-pills-row">
             <div className="payout-pill">
               <span className="text-[10px] text-zinc-500 font-mono block uppercase">Gross Subscriptions</span>
-              <span className="text-xl font-bold text-white">${config.metrics.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className="text-xl font-bold text-white">${(adminStats?.total_revenue ?? config.metrics.totalRevenue).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
             </div>
             <div className="payout-pill">
               <span className="text-[10px] text-zinc-500 font-mono block uppercase">Artist Royalty Cap (70%)</span>

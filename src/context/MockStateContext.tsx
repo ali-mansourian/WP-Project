@@ -414,6 +414,7 @@ interface MockStateContextProps {
   tickets: SupportTicket[];
   applications: ArtistApplication[];
   config: SystemConfig;
+  adminStats: any;
   
   // Auth Functions
 
@@ -486,6 +487,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [applications, setApplications] = useState<ArtistApplication[]>([]);
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
+  const [adminStats, setAdminStats] = useState<any>(null);
 
   // Initialize data from LocalStorage or seed defaults
   // Initialize data from Django Backend
@@ -646,6 +648,26 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           console.warn('Could not load artist applications:', error);
           setApplications([]);
         }
+              // Fetch Admin Dashboard Data (Admin only)
+      if (parsedUser && parsedUser.role === 'admin') {
+        try {
+          // Fetch all real users for admin management
+          const realUsers = await apiFetch('/api/auth/admin/users/');
+          if (Array.isArray(realUsers)) {
+            const normalizedUsers = realUsers.map(normalizeApiUser);
+            setUsers(normalizedUsers);
+            saveToStorage('spotify_mock_users', normalizedUsers);
+          }
+
+          // Fetch real admin platform stats
+          const stats = await apiFetch('/api/analytics/admin/stats/');
+          if (stats) {
+            setAdminStats(stats);
+          }
+        } catch (adminError) {
+          console.warn('Could not load admin dashboard data:', adminError);
+        }
+       }
       } else {
         setApplications([]);
       }
@@ -1671,7 +1693,8 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       updateSong,
       deleteSong,
       adminPublishSong,
-      incrementSongStreams
+      incrementSongStreams,
+      adminStats
     }}>
       {children}
     </MockStateContext.Provider>
