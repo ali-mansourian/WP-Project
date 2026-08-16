@@ -10,6 +10,7 @@ from .models import User
 from rest_framework.views import APIView
 from .models import UserPreferences
 from .serializers import UserPreferencesSerializer
+from django.db import models
 
 
 from .serializers import (
@@ -54,6 +55,19 @@ class RegisterArtistView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         token, _ = Token.objects.get_or_create(user=user)
+
+        staff_users = User.objects.filter(
+            models.Q(role__in=['admin', 'support']) | models.Q(is_staff=True)
+        ).distinct()
+
+        for staff in staff_users:
+            Notification.objects.create(
+                user=staff,
+                type='artist',
+                title='New Artist Verification Request',
+                message=f'Artist "{user.stage_name or user.name}" submitted a new registration awaiting portfolio audit.',
+                link='/admin-dashboard',
+            )
 
         return Response(
             {

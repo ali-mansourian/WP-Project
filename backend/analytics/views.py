@@ -10,6 +10,7 @@ from payments.models import Payment
 from tracking.models import SongPlay
 from .models import ArtistSettlement
 from .serializers import ArtistSettlementSerializer
+from notifications.models import Notification
 
 
 def is_admin_or_staff(user):
@@ -53,18 +54,23 @@ class ArtistSettlementViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminRoleOrStaff])
     def settle(self, request, pk=None):
-        """
-        Admin only action to mark a pending payout as settled.
-        """
         settlement = self.get_object()
-        
+
         if settlement.status == ArtistSettlement.Status.SETTLED:
             raise exceptions.ValidationError("This settlement is already marked as settled.")
-            
+
         settlement.status = ArtistSettlement.Status.SETTLED
         settlement.settled_at = timezone.now()
         settlement.save(update_fields=['status', 'settled_at'])
-        
+
+        Notification.objects.create(
+            user=settlement.artist,
+            type=Notification.Type.ARTIST,
+            title='Financial Clearance: Payout Settled',
+            message=f'Your settlement for {settlement.period} has been processed. ${settlement.amount_due} has been disbursed to your account.',
+            link='/artist-dashboard',
+        )
+
         serializer = self.get_serializer(settlement)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

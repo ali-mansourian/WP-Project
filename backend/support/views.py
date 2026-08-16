@@ -9,6 +9,9 @@ from .serializers import (
     SupportTicketDetailSerializer,
     SupportTicketListSerializer,
 )
+from django.db.models import Q
+from accounts.models import User
+from notifications.models import Notification
 
 
 def is_support_staff(user):
@@ -72,10 +75,23 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
         return queryset.filter(user=user)
 
     def perform_create(self, serializer):
-        serializer.save(
+        ticket = serializer.save(
             user=self.request.user,
             assigned_to=None,
         )
+
+        staff_users = User.objects.filter(
+            Q(role__in=['admin', 'support']) | Q(is_staff=True)
+        ).distinct()
+
+        for staff in staff_users:
+            Notification.objects.create(
+                user=staff,
+                type=Notification.Type.SUPPORT,
+                title='New Support Ticket',
+                message=f'User "{ticket.user.name}" submitted a new ticket: "{ticket.subject}".',
+                link='/support-agent-dashboard',
+            )
 
     def perform_update(self, serializer):
         if not is_support_staff(self.request.user):
