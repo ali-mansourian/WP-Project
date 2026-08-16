@@ -28,7 +28,7 @@ interface OutletContextType {
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
 }
 
 export const SearchView: React.FC = () => {
@@ -51,7 +51,7 @@ export const SearchView: React.FC = () => {
   }, [searchParams]);
   
   // Custom dropdown context menu state
-  const [activeMenuSongId, setActiveMenuSongId] = useState<string | null>(null);
+  const [activeMenuSongId, setActiveMenuSongId] = useState<string | number | null>(null);
   
   // Feedback notification toasts state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export const SearchView: React.FC = () => {
     const matchesSearch = 
       song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       song.artistName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      song.albumName.toLowerCase().includes(searchQuery.toLowerCase());
+      (song.albumName || '').toLowerCase().includes(searchQuery.toLowerCase());
     
     // Simple mock genre match based on title/album name keywords
     let genreMatch = true;
@@ -107,18 +107,18 @@ export const SearchView: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handlePlaylistAdd = (playlistId: string, song: Song) => {
-    const result = addTrackToPlaylist(playlistId, song.id);
+  const handlePlaylistAdd = async (playlistId: string | number, song: Song) => {
+    const result = await addTrackToPlaylist(playlistId, song.id);
     setActiveMenuSongId(null);
-    if (result.success) {
+    if (result && result.success) {
       showToast(`Added "${song.title}" to playlist successfully!`, 'success');
     } else {
-      showToast(result.message, 'warning');
+      showToast(result ? result.message : 'Failed to add track.', 'warning');
     }
   };
 
-  const handlePlaylistRemove = (playlistId: string, song: Song) => {
-    removeTrackFromPlaylist(playlistId, song.id);
+  const handlePlaylistRemove = async (playlistId: string | number, song: Song) => {
+    await removeTrackFromPlaylist(playlistId, song.id);
     setActiveMenuSongId(null);
     showToast(`Removed "${song.title}" from playlist.`, 'success');
   };

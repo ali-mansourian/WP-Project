@@ -28,7 +28,7 @@ interface OutletContextType {
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
 }
 
 export const PlaylistsView: React.FC = () => {
@@ -45,7 +45,7 @@ export const PlaylistsView: React.FC = () => {
   const { currentTrack, setCurrentTrack, isPlaying, setIsPlaying } = useOutletContext<OutletContextType>();
   const navigate = useNavigate();
   
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | number | null>(null);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   
   // Create Playlist form state
@@ -58,7 +58,7 @@ export const PlaylistsView: React.FC = () => {
 
   // Rename Playlist form state
   const [showRenameModal, setShowRenameModal] = useState(false);
-  const [renamePlaylistId, setRenamePlaylistId] = useState('');
+  const [renamePlaylistId, setRenamePlaylistId] = useState<string | number | ''>('');
   const [renameName, setRenameName] = useState('');
   const [renameDesc, setRenameDesc] = useState('');
   const [renameIsPublic, setRenameIsPublic] = useState(true);
@@ -233,9 +233,9 @@ export const PlaylistsView: React.FC = () => {
                             {pl.name}
                           </p>
                           {pl.isPublic ? (
-                            <Globe className="w-3 h-3 text-zinc-500 shrink-0" title="Public Playlist" />
+                            <Globe className="w-3 h-3 text-zinc-500 shrink-0" aria-label="Public Playlist" />
                           ) : (
-                            <Lock className="w-3 h-3 text-amber-500/80 shrink-0" title="Private Playlist" />
+                            <Lock className="w-3 h-3 text-amber-500/80 shrink-0" aria-label="Private Playlist" />
                           )}
                         </div>
                         <p className="text-[10px] text-zinc-500 truncate font-semibold">

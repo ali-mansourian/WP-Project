@@ -33,10 +33,10 @@ interface LayoutShellProps {
   playNextTrack: () => void;
   playPrevTrack: () => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
   unreadNotifCount: number;
   relevantNotifs: Notification[];
-  markNotificationRead: (id: string) => void;
+  markNotificationRead: (id: string | number) => void;
   clearAllNotifications: () => void;
 }
 

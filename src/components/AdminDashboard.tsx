@@ -49,7 +49,7 @@ export const AdminDashboard: React.FC = () => {
   // 1. Artist Management State
   const [subTab, setSubTab] = useState<'submit' | 'metrics'>('submit');
   const [songTitle, setSongTitle] = useState('');
-  const [songArtistId, setSongArtistId] = useState('');
+  const [songArtistId, setSongArtistId] = useState<string | number | ''>('');
   const [songAlbumName, setSongAlbumName] = useState('');
   const [songDuration, setSongDuration] = useState('180');
   const [songLyrics, setSongLyrics] = useState('');
@@ -60,9 +60,9 @@ export const AdminDashboard: React.FC = () => {
   const [uploadError, setUploadError] = useState('');
 
   // 2. Tickets & Approvals State
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | number | null>(null);
   const [ticketReplyText, setTicketReplyText] = useState('');
-  const [rejectModalAppId, setRejectModalAppId] = useState<string | null>(null);
+  const [rejectModalAppId, setRejectModalAppId] = useState<string | number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [selectedPortfolioApp, setSelectedPortfolioApp] = useState<ArtistApplication | null>(null);
 
@@ -160,7 +160,7 @@ export const AdminDashboard: React.FC = () => {
           setTimeout(() => {
             adminPublishSong(
               songTitle,
-              songArtistId,
+              String(songArtistId),
               selectedArtist.name,
               songAlbumName,
               durationSec,

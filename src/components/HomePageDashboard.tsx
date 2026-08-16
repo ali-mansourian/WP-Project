@@ -10,11 +10,11 @@ interface OutletContextType {
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
 }
 
 export const HomePageDashboard: React.FC = () => {
-  const { currentUser, songs, albums, playlists, toggleFollowArtist } = useMockState();
+  const { currentUser, songs, albums, playlists, toggleFollowArtist, initiateSubscriptionPurchase } = useMockState();
   const { currentTrack, setCurrentTrack, isPlaying, setIsPlaying, onAddToPlaylistClick } = useOutletContext<OutletContextType>();
   const navigate = useNavigate();
 

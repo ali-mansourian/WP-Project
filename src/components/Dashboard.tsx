@@ -24,10 +24,10 @@ interface DashboardProps {
   setCurrentTrack: (song: Song | null) => void;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
-  selectedPlaylistId: string | null;
-  setSelectedPlaylistId: (id: string | null) => void;
+  selectedPlaylistId: string | number | null;
+  setSelectedPlaylistId: (id: string | number | null) => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -225,7 +225,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           {song.title}
                         </p>
                         <p className="text-[10px] text-zinc-500 truncate">
-                          {song.artistName} • {song.albumName}
+                          {song.artistName} • {song.albumName || 'Single'}
                         </p>
                       </div>
                       
@@ -279,7 +279,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const filteredSongs = songs.filter(s => 
         s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.artistName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.albumName.toLowerCase().includes(searchQuery.toLowerCase())
+        (s.albumName || '').toLowerCase().includes(searchQuery.toLowerCase())
       );
 
       return (
@@ -335,7 +335,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           {song.title}
                         </p>
                         <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-                          Artist: {song.artistName} • Album: {song.albumName}
+                          Artist: {song.artistName} • Album: {song.albumName || 'Single'}
                         </p>
                       </div>
                       <span className="text-[10px] text-zinc-500 font-mono shrink-0">
@@ -437,7 +437,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <p className={`text-xs font-semibold truncate ${isThisTrack ? 'text-emerald-400 font-bold' : 'text-white'}`}>
                           {song.title}
                         </p>
-                        <p className="text-[10px] text-zinc-500 truncate">{song.artistName} • {song.albumName}</p>
+                        <p className="text-[10px] text-zinc-500 truncate">{song.artistName} • {song.albumName || 'Single'}</p>
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0">

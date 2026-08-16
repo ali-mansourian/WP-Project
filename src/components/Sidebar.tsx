@@ -19,7 +19,7 @@ import { Playlist } from '../types';
 interface SidebarProps {
   currentView: string;
   setView: (view: string) => void;
-  setSelectedPlaylistId: (id: string | null) => void;
+  setSelectedPlaylistId: (id: string | number | null) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, setSelectedPlaylistId }) => {
@@ -35,7 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, setSelec
   // Filter playlists created by the current user
   const userPlaylists = playlists.filter(p => p.userId === currentUser.id);
 
-  const handleCreatePlaylistSubmit = (e: React.FormEvent) => {
+  const handleCreatePlaylistSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -45,8 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, setSelec
       return;
     }
 
-    const result = createPlaylist(newPlaylistName, newPlaylistDesc);
-    if (result.success) {
+    const result = await createPlaylist(newPlaylistName, newPlaylistDesc);
+    if (result && result.success) {
       setSuccessMsg(result.message);
       setNewPlaylistName('');
       setNewPlaylistDesc('');
@@ -55,11 +55,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, setSelec
         setSuccessMsg('');
       }, 1000);
     } else {
-      setErrorMsg(result.message);
+      setErrorMsg(result ? result.message : 'Failed to create playlist.');
     }
   };
 
-  const selectPlaylist = (playlistId: string) => {
+  const selectPlaylist = (playlistId: string | number) => {
     setSelectedPlaylistId(playlistId);
     setView('playlist-detail');
   };

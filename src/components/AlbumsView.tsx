@@ -10,7 +10,7 @@ interface OutletContextType {
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
 }
 
 export const AlbumsView: React.FC = () => {
@@ -20,7 +20,7 @@ export const AlbumsView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'listeners' | 'releaseDate'>('releaseDate');
-  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
+  const [selectedAlbumId, setSelectedAlbumId] = useState<string | number | null>(null);
 
   const filteredAlbums = albums.filter(album => 
     album.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

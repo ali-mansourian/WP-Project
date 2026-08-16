@@ -16,12 +16,11 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({
   onClose,
   onUpgradeTrigger
 }) => {
-  const { currentUser, upgradeTier } = useMockState();
-
+  const { currentUser, initiateSubscriptionPurchase } = useMockState();
   if (!isOpen || !currentUser) return null;
 
-  const handleUpgradeClick = (tier: 'silver' | 'gold') => {
-    upgradeTier(currentUser.id, tier);
+  const handleUpgradeClick = async (tier: 'silver' | 'gold') => {
+    await initiateSubscriptionPurchase(tier);
     onUpgradeTrigger();
   };
 
@@ -70,7 +69,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({
                 <div className="space-y-4">
                   {/* Show first few lines as preview */}
                   <p className="text-zinc-300 font-semibold leading-relaxed blur-[1px]">
-                    {currentTrack.lyrics.split('\n').slice(0, 2).map((line, idx) => (
+                    {(currentTrack.lyrics || '').split('\n').slice(0, 2).map((line, idx) => (
                       <span key={idx} className="block mb-2 text-base">{line}</span>
                     ))}
                   </p>
@@ -139,7 +138,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({
                     <span>GOLD VIP KARAOKE ON: HI-RES AUDIO ACTIVE</span>
                   </div>
                   <div className="text-yellow-100 text-lg leading-relaxed space-y-4 font-bold font-sans">
-                    {currentTrack.lyrics.split('\n').map((line, idx) => {
+                    {(currentTrack.lyrics || '').split('\n').map((line, idx) => {
                       const isActive = idx === 1; // simulation of active karaoke row
                       return (
                         <p 

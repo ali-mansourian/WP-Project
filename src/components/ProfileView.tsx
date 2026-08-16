@@ -310,7 +310,7 @@ export const ProfileView: React.FC = () => {
 
                 <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-900">
                   <span className="text-[9px] text-zinc-500 font-mono block mb-1">User Identifier</span>
-                  <p className="text-xs font-mono font-bold text-zinc-500 truncate" title={currentUser.id}>{currentUser.id}</p>
+                  <p className="text-xs font-mono font-bold text-zinc-500 truncate" title={String(currentUser.id)}>{currentUser.id}</p>
                 </div>
               </div>
             </div>

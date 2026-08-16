@@ -189,7 +189,7 @@ function MainAppContent() {
   
   // Playlist addition dialog state
   const [playlistModalOpen, setPlaylistModalOpen] = useState<boolean>(false);
-  const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
+  const [selectedSongId, setSelectedSongId] = useState<string | number | null>(null);
   const [playlistAddSuccess, setPlaylistAddSuccess] = useState<string>('');
   const [playlistAddError, setPlaylistAddError] = useState<string>('');
 
@@ -244,24 +244,24 @@ function MainAppContent() {
   };
 
   // Trigger add track to playlist overlay
-  const handleOpenAddToPlaylist = (songId: string) => {
+  const handleOpenAddToPlaylist = (songId: string | number) => {
     setSelectedSongId(songId);
     setPlaylistModalOpen(true);
     setPlaylistAddSuccess('');
     setPlaylistAddError('');
   };
 
-  const handleSelectPlaylistForAdd = (playlistId: string) => {
+  const handleSelectPlaylistForAdd = async (playlistId: string | number) => {
     if (!selectedSongId) return;
-    const result = addTrackToPlaylist(playlistId, selectedSongId);
-    if (result.success) {
+    const result = await addTrackToPlaylist(playlistId, selectedSongId);
+    if (result && result.success) {
       setPlaylistAddSuccess(result.message);
       setTimeout(() => {
         setPlaylistModalOpen(false);
         setPlaylistAddSuccess('');
       }, 1200);
     } else {
-      setPlaylistAddError(result.message);
+      setPlaylistAddError(result ? result.message : 'Failed to add track to playlist.');
     }
   };
 

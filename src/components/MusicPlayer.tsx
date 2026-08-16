@@ -35,7 +35,7 @@ interface MusicPlayerProps {
   playNextTrack: () => void;
   playPrevTrack: () => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
 }
 
 export const MusicPlayer: React.FC<MusicPlayerProps> = ({
@@ -322,9 +322,9 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       if (isPlaying && currentTrack && currentTime > 10 && !streamLogged) {
         setStreamLogged(true); // Set immediately to prevent multiple calls
         
-        const result = await incrementSongStreams(currentTrack.id);
+        const result: any = await incrementSongStreams(currentTrack.id);
         
-        if (isMounted) {
+        if (isMounted && result) {
           if (!result.success && result.message === 'limit_reached') {
             setShowStreamLimitAlert(true);
             setIsPlaying(false);
@@ -380,7 +380,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     document.body.removeChild(link);
   };
 
-  const removeFromQueue = (songId: string) => {
+  const removeFromQueue = (songId: string | number) => {
     setCustomQueue(prev => prev.filter(s => s.id !== songId));
   };
 
@@ -432,7 +432,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 </span>
                 {currentTrack.albumName && (
                   <span 
-                    onClick={() => navigate(`/search?q=${encodeURIComponent(currentTrack.albumName)}`)}
+                    onClick={() => navigate(`/search?q=${encodeURIComponent(currentTrack.albumName || '')}`)}
                     className="text-[10px] text-zinc-500 hover:underline cursor-pointer truncate"
                     title="Search album"
                   >
@@ -941,7 +941,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
             <div className="lyrics-scroll-block h-32 overflow-y-auto text-center py-2 text-xs font-semibold leading-relaxed text-zinc-400 space-y-2">
               {currentTrack.lyrics ? (
                 currentTrack.lyrics.split('\n').map((line, idx) => {
-                  const lines = currentTrack.lyrics.split('\n');
+                  const lines = (currentTrack.lyrics || '').split('\n');
                   const targetTime = (duration / lines.length) * idx;
                   const isActiveLine = idx === Math.min(Math.floor(lines.length * (currentTime / (duration || 1))), lines.length - 1);
                   return (

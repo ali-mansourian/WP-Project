@@ -423,7 +423,7 @@ interface MockStateContextProps {
   registerListener: (name: string, email: string, password: string, dob: string, gender: string) => Promise<{ success: boolean; message: string; user?: User }>;
   registerArtist: (stageName: string, email: string, password: string, portfolioFiles?: File[]) => Promise<{ success: boolean; message: string; user?: User }>;
   logout: () => Promise<void>;
-  switchUser: (userId: string) => void;
+  switchUser: (userId: string | number) => void;
   
   // Subscription / Tier Operations
   initiateSubscriptionPurchase: (tier: 'silver' | 'gold') => Promise<void>;
@@ -440,9 +440,10 @@ interface MockStateContextProps {
   toggleFollowArtist: (artistName: string) => void;
   
   // Notifications Operations
-  markNotificationRead: (id: string) => void;
+  // Notifications Operations
+  markNotificationRead: (id: string | number) => void;
   clearAllNotifications: () => void;
-  deleteNotification: (id: string) => void;
+  deleteNotification: (id: string | number) => void;
   
   // Profile & Account Operations
   updateProfile: (name: string, dob: string, gender: string, avatarUrl?: string) => void;
@@ -768,7 +769,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       artistName: raw.artist_name || '',
       coverUrl: absoluteMediaUrl(raw.cover) || COVERS.retro,
       releaseDate: raw.release_date || raw.created_at || '',
-      songIds: normalizedSongs.map(song => song.id),
+      songIds: normalizedSongs.map((song: Song) => song.id),
       songs: normalizedSongs,
     };
   };
@@ -787,7 +788,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       userId: raw.owner ?? raw.user ?? '',
       description: raw.description || '',
       coverUrl: absoluteMediaUrl(raw.cover) || COVERS.acoustic,
-      songIds: normalizedSongs.map(song => song.id),
+      songIds: normalizedSongs.map((song: Song) => song.id),
       songs: normalizedSongs,
       isPublic: raw.visibility === 'public',
       createdAt: raw.created_at || raw.createdAt || '',
@@ -939,7 +940,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.removeItem('spotify_mock_current_user');
   };
 
-  const switchUser = (userId: string) => {
+  const switchUser = (userId: string | number) => {
     // Note: Mock switching breaks real JWT/Token auth. 
     // If a user clicks the dev switcher, we force a logout so they can log in properly.
     logout();

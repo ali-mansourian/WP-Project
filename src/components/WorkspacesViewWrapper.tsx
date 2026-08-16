@@ -9,7 +9,7 @@ interface OutletContextType {
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   onLyricsClick: () => void;
-  onAddToPlaylistClick: (songId: string) => void;
+  onAddToPlaylistClick: (songId: string | number) => void;
 }
 
 interface WorkspacesViewWrapperProps {
@@ -18,7 +18,7 @@ interface WorkspacesViewWrapperProps {
 
 export const WorkspacesViewWrapper: React.FC<WorkspacesViewWrapperProps> = ({ viewName }) => {
   const { currentTrack, setCurrentTrack, isPlaying, setIsPlaying, onLyricsClick, onAddToPlaylistClick } = useOutletContext<OutletContextType>();
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | number | null>(null);
 
   return (
     <div className="animate-in fade-in duration-300">
