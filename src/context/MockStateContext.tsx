@@ -568,10 +568,20 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       // 3. Fetch Real Playlists
+           
       try {
         const realPlaylists = await apiFetch('/api/playlists/');
         if (Array.isArray(realPlaylists)) {
-          const normalizedPlaylists = realPlaylists.map(normalizeApiPlaylist);
+          const detailedPlaylists = await Promise.all(
+            realPlaylists.map(async (playlist: any) => {
+              try {
+                return await apiFetch(`/api/playlists/${playlist.id}/`);
+              } catch {
+                return playlist;
+              }
+            })
+          );
+          const normalizedPlaylists = detailedPlaylists.map(normalizeApiPlaylist);
           setPlaylists(normalizedPlaylists);
           localStorage.setItem('spotify_mock_playlists', JSON.stringify(normalizedPlaylists));
         }
@@ -1173,7 +1183,7 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Follow toggle failed:', err.message);
     }
   };
-  
+
   // 5. Notifications Operations
     
   const markNotificationRead = async (id: string | number) => {
