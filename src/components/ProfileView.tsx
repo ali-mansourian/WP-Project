@@ -31,7 +31,9 @@ export const ProfileView: React.FC = () => {
     playlists, 
     songs, 
     albums,
-    toggleFollowArtist
+    toggleFollowArtist,
+    followsData,
+    fetchFollowsData
   } = useMockState();
 
   const [searchParams] = useSearchParams();
@@ -42,9 +44,10 @@ export const ProfileView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'profile' | 'artists'>(
     (queryTab === 'artists' || queryTab === 'profile') ? queryTab : 'profile'
   );
-  const [selectedArtistId, setSelectedArtistId] = useState<string>(
-    queryArtistId || 'usr-luna'
+  const [selectedArtistId, setSelectedArtistId] = useState<string | number | null>(
+    queryArtistId ? (isNaN(Number(queryArtistId)) ? queryArtistId : Number(queryArtistId)) : null
   );
+  const [artistsList, setArtistsList] = useState<any[]>([]);
 
   // Sync tab and artistId from URL parameters
   useEffect(() => {
@@ -78,6 +81,23 @@ export const ProfileView: React.FC = () => {
       }
     };
     fetchStats();
+  }, []);
+
+  useEffect(() => {
+    const fetchArtists = async () => {
+      try {
+        const data = await apiFetch('/api/auth/artists/');
+        if (Array.isArray(data)) {
+          setArtistsList(data);
+          if (!selectedArtistId && data.length > 0) {
+            setSelectedArtistId(data[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load artists:', err);
+      }
+    };
+    fetchArtists();
   }, []);
 
   if (!currentUser) return null;
@@ -123,26 +143,12 @@ export const ProfileView: React.FC = () => {
   
   // Curate metrics
   const userPlaylists = playlists.filter(p => p.userId === currentUser.id);
-  const followedCount = currentUser.followedArtists?.length || 0;
+  const followedCount = followsData?.following_count ?? 0;
+  const followersCount = followsData?.follower_count ?? 0;
   const realTotalStreams = listenerStats?.total_streams ?? 0;
 
-  // Artist static profiles data
-  const ARTIST_INFOS = {
-    'usr-luna': {
-      id: 'usr-luna',
-      name: 'Luna Wave',
-      avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80",
-      bio: "Luna Wave is a synthwave producer crafting celestial dreamscapes and nostalgic cyber beats since 2021. Drawing inspiration from 80s arcade culture and retro sci-fi films, she creates high-speed highway soundstages.",
-      verified: true
-    },
-    'usr-synth': {
-      id: 'usr-synth',
-      name: 'The Synth Project',
-      avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80",
-      bio: "The Synth Project is an electronic music collective exploring granular synthesis, modular soundscapes, and digital neo-classical audio environments. They release complex atmospheric frequencies.",
-      verified: true
-    }
-  };
+  
+  
 
   const getTierBadge = (tier: string) => {
     if (tier === 'gold') {
@@ -271,9 +277,11 @@ export const ProfileView: React.FC = () => {
                 <p className="text-xs text-zinc-500 font-mono mt-1 text-center">{currentUser.email}</p>
 
                 {/* Follower/Following counts */}
+                                
+                               
                 <div className="flex items-center justify-center gap-4 text-xs font-mono text-zinc-400 mt-2.5 bg-zinc-950/40 py-1.5 px-3 rounded-lg border border-zinc-900/60 w-fit mx-auto">
                   <div>
-                    <span className="text-white font-bold">{((currentUser.name || '').charCodeAt(0) % 20) + 12}</span> <span className="text-zinc-500">Followers</span>
+                    <span className="text-white font-bold">{followersCount}</span> <span className="text-zinc-500">Followers</span>
                   </div>
                   <div className="w-px h-3 bg-zinc-800" />
                   <div>
@@ -424,52 +432,62 @@ export const ProfileView: React.FC = () => {
             <div className="space-y-3">
               <label className="custom-label">Select Artist to View</label>
               <div className="grid grid-cols-2 gap-2">
-                {Object.values(ARTIST_INFOS).map((art) => (
-                  <button
-                    key={art.id}
-                    onClick={() => setSelectedArtistId(art.id)}
-                    className={`p-3 rounded-xl border flex items-center gap-3 transition text-left cursor-pointer ${
-                      selectedArtistId === art.id 
-                        ? 'bg-zinc-900 border-zinc-700' 
-                        : 'bg-zinc-950/20 border-zinc-900/40 hover:bg-zinc-900/40'
-                    }`}
-                  >
-                    <img 
-                      src={art.avatarUrl} 
-                      alt={art.name}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                    <span className="text-xs font-bold text-white truncate">{art.name}</span>
-                  </button>
-                ))}
+                {artistsList.length === 0 ? (
+                  <p className="text-xs text-zinc-500 col-span-2 text-center py-4">No verified artists found.</p>
+                ) : (
+                  artistsList.map((art) => (
+                    <button
+                      key={art.id}
+                      onClick={() => setSelectedArtistId(art.id)}
+                      className={`p-3 rounded-xl border flex items-center gap-3 transition text-left cursor-pointer ${
+                        selectedArtistId === art.id 
+                          ? 'bg-zinc-900 border-zinc-700' 
+                          : 'bg-zinc-950/20 border-zinc-900/40 hover:bg-zinc-900/40'
+                      }`}
+                    >
+                      <img 
+                        src={art.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80"} 
+                        alt={art.name}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <span className="text-xs font-bold text-white truncate">{art.stage_name || art.name}</span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 
+            
+            
+            
+            
+            
+            
             {/* Selected Artist Bio Profile */}
             {(() => {
-              const artistObj = ARTIST_INFOS[selectedArtistId as keyof typeof ARTIST_INFOS];
-              if (!artistObj) return null;
-              const isFollowing = currentUser.followedArtists?.includes(artistObj.name);
+              const artistObj = artistsList.find(a => a.id === selectedArtistId);
+              if (!artistObj) return <div className="text-center py-8 text-zinc-500 text-xs">Select an artist to view details.</div>;
+              const isFollowing = followsData?.following.some(a => a.id === artistObj.id) ?? false;
               return (
                 <div className="space-y-4 animate-in fade-in duration-200">
                   <div className="flex items-center gap-3 pb-4 border-b border-zinc-900">
                     <img
-                      src={artistObj.avatarUrl}
+                      src={artistObj.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80"}
                       alt={artistObj.name}
                       className="w-14 h-14 rounded-full object-cover border border-zinc-800"
                     />
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <h3 className="text-base font-bold text-white">{artistObj.name}</h3>
-                        {artistObj.verified && (
+                        <h3 className="text-base font-bold text-white">{artistObj.stage_name || artistObj.name}</h3>
+                        {artistObj.is_verified_artist && (
                           <span className="verified-badge bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center justify-center select-none" title="Verified Creator Account">✓</span>
                         )}
                       </div>
-                      <p className="text-[10px] text-zinc-500 font-mono mt-0.5 mb-2.5">Verified Artist ID: {artistObj.id}</p>
+                      <p className="text-[10px] text-zinc-500 font-mono mt-0.5 mb-2.5">Artist ID: {artistObj.id}</p>
                       
                       {/* Follow Mechanics Button */}
                       <button
-                        onClick={() => toggleFollowArtist(artistObj.name)}
+                        onClick={() => toggleFollowArtist(artistObj.id)}
                         className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer border flex items-center gap-1.5 ${
                           isFollowing
                             ? 'bg-zinc-800/80 border-zinc-700/60 text-zinc-300 hover:bg-zinc-750 hover:text-white'
@@ -494,7 +512,7 @@ export const ProfileView: React.FC = () => {
                   <div className="space-y-2">
                     <span className="custom-label">Artist Biography</span>
                     <p className="text-xs text-zinc-400 leading-relaxed font-medium">
-                      {artistObj.bio}
+                      {artistObj.bio || "No biography provided."}
                     </p>
                   </div>
                 </div>

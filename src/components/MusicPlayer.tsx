@@ -48,7 +48,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   onLyricsClick,
   onAddToPlaylistClick
 }) => {
-  const { currentUser, songs, toggleFollowArtist, incrementSongStreams } = useMockState();
+  const { currentUser, songs, toggleFollowArtist, incrementSongStreams, followsData } = useMockState();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const navigate = useNavigate();
   
@@ -398,7 +398,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   };
 
   // FIX: Added safe fallback to prevent crash if followedArtists is missing
-  const isFollowing = (currentUser.followedArtists || []).includes(currentTrack?.artistName || '');
+  const isFollowing = followsData?.following.some(a => a.id === currentTrack?.artistId) ?? false;
 
   return (
     <div style={{ '--active-theme-color': activeColor } as React.CSSProperties}>
@@ -448,7 +448,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
               <div className="flex items-center gap-1.5 ml-2">
                 <button
-                  onClick={() => toggleFollowArtist(currentTrack.artistName)}
+                  onClick={() => toggleFollowArtist(currentTrack.artistId)}
                   className="p-1.5 hover:text-white hover:scale-110 transition cursor-pointer"
                   title={isFollowing ? "Unfollow Artist" : "Follow Artist"}
                 >

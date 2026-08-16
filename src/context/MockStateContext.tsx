@@ -437,7 +437,9 @@ interface MockStateContextProps {
   removeTrackFromPlaylist: (playlistId: string | number, songId: string | number) => Promise<void>;
   
   // Social Operations
-  toggleFollowArtist: (artistName: string) => void;
+  toggleFollowArtist: (artistId: string | number) => void;
+  followsData: { following: { id: string | number; name: string; stage_name: string; avatar: string | null }[]; follower_count: number; following_count: number } | null;
+  fetchFollowsData: () => Promise<void>;
   
   // Notifications Operations
   // Notifications Operations
@@ -499,6 +501,11 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [applications, setApplications] = useState<ArtistApplication[]>([]);
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
   const [adminStats, setAdminStats] = useState<any>(null);
+  const [followsData, setFollowsData] = useState<{
+    following: { id: string | number; name: string; stage_name: string; avatar: string | null }[];
+    follower_count: number;
+    following_count: number;
+  } | null>(null);
 
   // Initialize data from LocalStorage or seed defaults
   // Initialize data from Django Backend
@@ -682,6 +689,8 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } else {
         setApplications([]);
       }
+            // Fetch follows data for any logged-in user
+      fetchFollowsData();
     };
     
     fetchRealData();
@@ -844,6 +853,16 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: raw.created_at || '',
       replies: normalizedReplies,
     };
+  };
+
+
+  const fetchFollowsData = async () => {
+    try {
+      const data = await apiFetch('/api/auth/me/follows/');
+      if (data) setFollowsData(data);
+    } catch (err) {
+      console.warn('Could not load follows data:', err);
+    }
   };
 
   // 1. Auth Functions (Connected to Django Backend)
@@ -1138,27 +1157,23 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // 4. Social Operations
-  const toggleFollowArtist = (artistName: string) => {
+  const toggleFollowArtist = async (artistId: string | number) => {
     if (!currentUser) return;
-    const isFollowing = currentUser.followedArtists.includes(artistName);
-    const updatedFollows = isFollowing
-      ? currentUser.followedArtists.filter(name => name !== artistName)
-      : [...currentUser.followedArtists, artistName];
 
-    const updatedUser = { ...currentUser, followedArtists: updatedFollows };
-    setCurrentUser(updatedUser);
-    saveToStorage('spotify_mock_current_user', updatedUser);
+    const isFollowing = followsData?.following.some(a => a.id === artistId) ?? false;
 
-    const updatedUsers = users.map(u => {
-      if (u.id === currentUser.id) {
-        return updatedUser;
+    try {
+      if (isFollowing) {
+        await apiFetch(`/api/auth/follow/${artistId}/`, { method: 'DELETE' });
+      } else {
+        await apiFetch(`/api/auth/follow/${artistId}/`, { method: 'POST' });
       }
-      return u;
-    });
-    setUsers(updatedUsers);
-    saveToStorage('spotify_mock_users', updatedUsers);
+      await fetchFollowsData();
+    } catch (err: any) {
+      console.error('Follow toggle failed:', err.message);
+    }
   };
-
+  
   // 5. Notifications Operations
     
   const markNotificationRead = async (id: string | number) => {
@@ -1723,7 +1738,9 @@ export const MockStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       deleteSong,
       adminPublishSong,
       incrementSongStreams,
-      adminStats
+      adminStats,
+      followsData,
+      fetchFollowsData,
     }}>
       {children}
     </MockStateContext.Provider>
