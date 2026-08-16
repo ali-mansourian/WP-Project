@@ -112,3 +112,24 @@ class UserPreferences(models.Model):
 
     def __str__(self):
         return f"Preferences for {self.user.email}"
+    
+class Follow(models.Model):
+    follower = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='following',
+    )
+    artist = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='followers',
+        limit_choices_to={'role': 'artist'},
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['follower', 'artist']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.follower.email} follows {self.artist.email}"

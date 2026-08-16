@@ -4,6 +4,8 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from .models import Album, Song
 from .serializers import AlbumSerializer, SongSerializer
+from accounts.models import Follow
+from notifications.models import Notification
 
 
 class IsArtistOrReadOnly(permissions.BasePermission):
@@ -50,6 +52,19 @@ class SongViewSet(viewsets.ModelViewSet):
                 
         # Public users and listeners only see approved songs
         return qs.filter(approved=True)
+    
+    def perform_create(self, serializer):
+        song = serializer.save()
+
+        followers = Follow.objects.filter(artist=song.artist).select_related('follower')
+        for follow in followers:
+            Notification.objects.create(
+                user=follow.follower,
+                type=Notification.Type.MUSIC,
+                title=f'New Release: "{song.title}"',
+                message=f'{song.artist.display_name} just released a new track. Stream it now!',
+                link='/search',
+            )
 
 
 class AlbumViewSet(viewsets.ReadOnlyModelViewSet):

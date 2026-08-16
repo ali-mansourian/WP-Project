@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from .models import UserPreferences
 from .serializers import UserPreferencesSerializer
 from django.db import models
+from .models import Follow
 
 
 from .serializers import (
@@ -247,3 +248,97 @@ class AdminUserListView(APIView):
         users = User.objects.all().order_by('-joined_date')
         serializer = AdminUserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    
+class FollowView(APIView):
+    """
+    Follow or unfollow an artist.
+    POST /api/auth/follow/<artist_id>/   -> follow
+    DELETE /api/auth/follow/<artist_id>/ -> unfollow
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, artist_id):
+        try:
+            artist = User.objects.get(pk=artist_id, role='artist')
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'Artist not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if artist == request.user:
+            return Response(
+                {'detail': 'You cannot follow yourself.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        Follow.objects.get_or_create(follower=request.user, artist=artist)
+        return Response(
+            {'detail': 'Followed successfully.', 'following': True},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def delete(self, request, artist_id):
+        Follow.objects.filter(follower=request.user, artist_id=artist_id).delete()
+        return Response(
+            {'detail': 'Unfollowed successfully.', 'following': False},
+            status=status.HTTP_200_OK,
+        )
+
+
+class MyFollowsView(APIView):
+    """
+    Get the current user's follow data.
+    GET /api/auth/me/follows/
+    Returns: following list, follower_count, following_count
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        following = Follow.objects.filter(follower=user).select_related('artist')
+        following_list = [
+            {
+                'id': f.artist.id,
+                'name': f.artist.name,
+                'stage_name': f.artist.stage_name,
+                'avatar': f.artist.avatar.url if f.artist.avatar else None,
+            }
+            for f in following
+        ]
+
+        follower_count = Follow.objects.filter(artist=user).count()
+        following_count = Follow.objects.filter(follower=user).count()
+
+        return Response({
+            'following': following_list,
+            'follower_count': follower_count,
+            'following_count': following_count,
+        }, status=status.HTTP_200_OK)
+        
+        
+        
+        
+class ArtistListView(APIView):
+    """
+    List all approved artists.
+    GET /api/auth/artists/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        artists = User.objects.filter(role='artist', status='active')
+        data = [
+            {
+                'id': a.id,
+                'name': a.name,
+                'stage_name': a.stage_name,
+                'bio': a.bio,
+                'avatar': a.avatar.url if a.avatar else None,
+                'is_verified_artist': a.is_verified_artist,
+            }
+            for a in artists
+        ]
+        return Response(data, status=status.HTTP_200_OK)

@@ -10,6 +10,8 @@ from .views import (
     RegisterListenerView,
     UserPreferencesView,
 )
+from .views import FollowView, MyFollowsView
+from .views import ArtistListView
 
 app_name = 'accounts'
 
@@ -29,4 +31,7 @@ urlpatterns = [
     path('admin/users/', AdminUserListView.as_view(), name='admin-user-list'),
         # User Preferences
     path('me/preferences/', UserPreferencesView.as_view(), name='user-preferences'),
+    path('follow/<int:artist_id>/', FollowView.as_view(), name='follow-artist'),
+    path('me/follows/', MyFollowsView.as_view(), name='my-follows'),
+    path('artists/', ArtistListView.as_view(), name='artist-list'),
 ]
