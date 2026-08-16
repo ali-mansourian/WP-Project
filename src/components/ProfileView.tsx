@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { ListenerTier } from '../types';
 import './ProfileSettings.css';
+import { apiFetch } from '../api';
 
 export const ProfileView: React.FC = () => {
     const { 
@@ -66,6 +67,18 @@ export const ProfileView: React.FC = () => {
   const [editGender, setEditGender] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [listenerStats, setListenerStats] = useState<{ total_streams: number } | null>(null);
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const stats = await apiFetch('/api/analytics/listener/stats/');
+        if (stats) setListenerStats(stats);
+      } catch (err) {
+        console.warn('Could not load listener stats:', err);
+      }
+    };
+    fetchStats();
+  }, []);
 
   if (!currentUser) return null;
 
@@ -107,20 +120,11 @@ export const ProfileView: React.FC = () => {
   ];
 
   // Simulated week listen metrics for graph
-  const weeklyStreams = [
-    { day: 'Mon', count: 12, height: '40%' },
-    { day: 'Tue', count: 28, height: '85%' },
-    { day: 'Wed', count: 19, height: '58%' },
-    { day: 'Thu', count: 32, height: '98%' },
-    { day: 'Fri', count: 24, height: '72%' },
-    { day: 'Sat', count: 15, height: '48%' },
-    { day: 'Sun', count: 21, height: '65%' },
-  ];
-
+  
   // Curate metrics
   const userPlaylists = playlists.filter(p => p.userId === currentUser.id);
   const followedCount = currentUser.followedArtists?.length || 0;
-  const mockTotalStreams = userPlaylists.reduce((acc, p) => acc + p.songIds.length * 42, 128);
+  const realTotalStreams = listenerStats?.total_streams ?? 0;
 
   // Artist static profiles data
   const ARTIST_INFOS = {
@@ -337,42 +341,11 @@ export const ProfileView: React.FC = () => {
                 </div>
                 <div className="metric-card">
                   <span className="metric-label">Est. Song Streams</span>
-                  <p className="metric-value">{mockTotalStreams}</p>
+                  <p className="metric-value">{realTotalStreams}</p>
                 </div>
               </div>
             </div>
-
-            {/* Weekly Listen Bar Chart (Simulated Stream Graph) */}
-            <div className="stream-graph-container">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <LineChart className="w-4 h-4 text-emerald-400" />
-                  <span className="text-xs font-bold text-zinc-200">Weekly Listening Analytics</span>
-                </div>
-                <span className="text-[9px] text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded font-mono font-bold">
-                  +14% VS LAST WEEK
-                </span>
-              </div>
-              
-              {/* Graphic Bar Heights */}
-              <div className="graph-bars-wrapper">
-                {weeklyStreams.map((bar) => (
-                  <div key={bar.day} className="graph-bar-col">
-                    <span className="text-[8px] text-zinc-500 font-mono">{bar.count}s</span>
-                    <div className="graph-bar-track">
-                      <div 
-                        className="graph-bar-fill" 
-                        style={{ height: bar.height }}
-                      />
-                    </div>
-                    <span className="graph-label">{bar.day}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-zinc-500 leading-normal font-medium">
-                Simulated streams monitor your audio loops. Listening peak occurred on <strong>Thursday</strong> with 32 streamed tracks.
-              </p>
-            </div>
+           
 
             {/* Subscription Tiers Simulation */}
             <div className="space-y-3">

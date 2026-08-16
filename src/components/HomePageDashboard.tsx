@@ -45,7 +45,7 @@ export const HomePageDashboard: React.FC = () => {
   const trendingTracks = [...songs].sort((a, b) => b.streams - a.streams);
 
   // Take the user's playlists or first few default playlists for "Recently Played"
-  const recentlyPlayedPlaylists = playlists.slice(0, 6);
+    const recentlyPlayedPlaylists = playlists.filter(p => p.userId === currentUser.id).slice(0, 6);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">

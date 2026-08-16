@@ -155,3 +155,15 @@ class ArtistStatsView(APIView):
             'total_streams': stats['total_streams'] or 0,
             'unique_listeners': stats['unique_listeners'] or 0
         }, status=status.HTTP_200_OK)
+class ListenerStatsView(APIView):
+    """
+    Returns the logged-in listener's total stream count.
+    Endpoint: GET /api/analytics/listener/stats/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        total_streams = SongPlay.objects.filter(user=request.user).count()
+        return Response({
+            'total_streams': total_streams,
+        }, status=status.HTTP_200_OK)
